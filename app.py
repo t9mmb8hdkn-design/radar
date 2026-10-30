@@ -536,7 +536,7 @@ with onglets[2]:
 
 # ---------------------------------------------------------------- ONGLET 4
 with onglets[3]:
-    st.markdown("""
+        st.markdown("""
 ### Comment lire les scores
 - **Momentum** : le cours monte-t-il plus vite que le marché ?
 - **Fondamentaux** : croissance, marges, rentabilité, endettement.
@@ -550,4 +550,7 @@ with onglets[3]:
 - ⚖️ **À surveiller** : signaux mélangés.
 
 ### Importer un CSV
-Colonnes : `ticker`, `quantite`, `prix_achat`. Exemple :
+Colonnes : ticker, quantite, prix_achat. Pour les actions européennes, ajoutez le suffixe de la bourse (.PA Paris, .DE Allemagne, .AS Amsterdam).
+
+⚠️ Outil pédagogique : ne constitue pas un conseil en investissement.
+""")
