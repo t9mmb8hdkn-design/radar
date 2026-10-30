@@ -1,408 +1,553 @@
-"""
-Radar Croissance — Screener d'actions à progression rapide / fluctuante
-Lancer avec :  streamlit run app.py
-⚠️ Outil d'analyse uniquement, pas un conseil en investissement.
-"""
-import io
-import datetime as dt
+import re
+from urllib.parse import quote
 
+import feedparser
 import numpy as np
 import pandas as pd
-import requests
-import feedparser
-import streamlit as st
-import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import streamlit as st
+import yfinance as yf
 
-st.set_page_config(page_title="Radar Croissance", layout="wide", page_icon="🚀")
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+st.set_page_config(page_title="Radar Bourse 2.0", page_icon="📡", layout="wide")
 
-# ----------------------------------------------------------------------------
-# UNIVERS D'ACTIONS
-# ----------------------------------------------------------------------------
-CAC40 = {
-    "AI.PA": "Air Liquide", "AIR.PA": "Airbus", "ALO.PA": "Alstom", "MT.AS": "ArcelorMittal",
-    "CS.PA": "AXA", "BNP.PA": "BNP Paribas", "EN.PA": "Bouygues", "CAP.PA": "Capgemini",
-    "CA.PA": "Carrefour", "ACA.PA": "Crédit Agricole", "BN.PA": "Danone",
-    "DSY.PA": "Dassault Systèmes", "EDEN.PA": "Edenred", "ENGI.PA": "Engie",
-    "EL.PA": "EssilorLuxottica", "ERF.PA": "Eurofins", "RMS.PA": "Hermès", "KER.PA": "Kering",
-    "OR.PA": "L'Oréal", "LR.PA": "Legrand", "MC.PA": "LVMH", "ML.PA": "Michelin",
-    "ORA.PA": "Orange", "RI.PA": "Pernod Ricard", "PUB.PA": "Publicis", "RNO.PA": "Renault",
-    "SAF.PA": "Safran", "SGO.PA": "Saint-Gobain", "SAN.PA": "Sanofi",
-    "SU.PA": "Schneider Electric", "GLE.PA": "Société Générale", "STLAP.PA": "Stellantis",
-    "STMPA.PA": "STMicroelectronics", "TEP.PA": "Teleperformance", "HO.PA": "Thales",
-    "TTE.PA": "TotalEnergies", "URW.PA": "Unibail-Rodamco", "VIE.PA": "Veolia",
-    "DG.PA": "Vinci", "VIV.PA": "Vivendi",
+# =====================================================================
+# 1. LES GRANDES TENDANCES MONDIALES
+# =====================================================================
+TENDANCES = {
+    "🤖 IA & semi-conducteurs": {
+        "etf": "SMH",
+        "actions": ["NVDA", "AVGO", "AMD", "TSM", "ASML", "PLTR", "ARM"],
+        "pourquoi": "Les géants du cloud investissent des centaines de milliards dans les data centers. Puces et logiciels d'IA sont au cœur de cette vague.",
+        "risques": "Valorisations élevées, dépendance à quelques gros clients, restrictions d'export vers la Chine, risque de bulle.",
+    },
+    "🛡️ Cybersécurité": {
+        "etf": "CIBR",
+        "actions": ["CRWD", "PANW", "ZS", "NET", "FTNT"],
+        "pourquoi": "Explosion des cyberattaques, tensions géopolitiques et nouvelles obligations réglementaires : la sécurité devient incontournable.",
+        "risques": "Concurrence forte, valorisations élevées, une panne majeure peut nuire à la réputation.",
+    },
+    "⚛️ Nucléaire & uranium": {
+        "etf": "URA",
+        "actions": ["CCJ", "CEG", "VST", "OKLO", "SMR"],
+        "pourquoi": "Les data centers d'IA ont besoin d'une électricité énorme et stable. Le nucléaire revient en grâce (soutien des États, petits réacteurs SMR).",
+        "risques": "Projets très longs, dépendance aux autorisations publiques, certaines sociétés n'ont pas encore de revenus.",
+    },
+    "⚡ Électrification & réseaux": {
+        "etf": "GRID",
+        "actions": ["ETN", "VRT", "GEV", "SU.PA", "PWR"],
+        "pourquoi": "Il faut moderniser les réseaux électriques pour les data centers, les voitures électriques et la relocalisation industrielle.",
+        "risques": "Secteur cyclique, sensible aux taux d'intérêt et aux budgets d'investissement.",
+    },
+    "🌱 Énergies renouvelables": {
+        "etf": "ICLN",
+        "actions": ["FSLR", "ENPH", "NEE", "ORSTED.CO"],
+        "pourquoi": "Transition énergétique, objectifs climat, coûts du solaire en baisse.",
+        "risques": "Très dépendant des subventions et des décisions politiques, sensible aux taux.",
+    },
+    "🎖️ Défense & souveraineté": {
+        "etf": "ITA",
+        "actions": ["RHM.DE", "HO.PA", "SAF.PA", "LMT", "RTX"],
+        "pourquoi": "Réarmement de l'Europe, hausse des budgets militaires de l'OTAN, conflits en cours.",
+        "risques": "Un accord de paix ou des coupes budgétaires peuvent faire chuter le secteur, enjeux éthiques.",
+    },
+    "🧬 Santé & longévité": {
+        "etf": "XLV",
+        "actions": ["LLY", "NVO", "VRTX", "ISRG"],
+        "pourquoi": "Vieillissement de la population, traitements contre l'obésité (GLP-1), chirurgie robotisée.",
+        "risques": "Pression politique sur le prix des médicaments, échecs d'essais cliniques.",
+    },
+    "🦾 Robotique & automatisation": {
+        "etf": "BOTZ",
+        "actions": ["TSLA", "ROK", "SYM", "TER", "ABBN.SW"],
+        "pourquoi": "Manque de main-d'œuvre, relocalisation des usines, robots humanoïdes et IA physique.",
+        "risques": "Promesses parfois lointaines, forte volatilité.",
+    },
+    "🚀 Spatial": {
+        "etf": "UFO",
+        "actions": ["RKLB", "ASTS", "LUNR"],
+        "pourquoi": "Baisse du coût des lancements, constellations de satellites, budgets de défense spatiale.",
+        "risques": "Entreprises souvent non rentables, très spéculatives, besoin de lever de l'argent.",
+    },
+    "💳 Fintech & paiements": {
+        "etf": "FINX",
+        "actions": ["HOOD", "SOFI", "NU", "ADYEN.AS", "MELI"],
+        "pourquoi": "Numérisation de la banque, nouvelles générations d'investisseurs, paiements mobiles dans les pays émergents.",
+        "risques": "Régulation, sensibilité aux cycles de crédit et à l'activité des particuliers en bourse.",
+    },
 }
 
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_universe(name: str) -> dict:
-    try:
-        if name == "S&P 500":
-            html = requests.get("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-                                headers=HEADERS, timeout=20).text
-            df = pd.read_html(io.StringIO(html))[0]
-            return dict(zip(df["Symbol"].str.replace(".", "-", regex=False), df["Security"]))
-        if name == "Nasdaq 100":
-            html = requests.get("https://en.wikipedia.org/wiki/Nasdaq-100",
-                                headers=HEADERS, timeout=20).text
-            for t in pd.read_html(io.StringIO(html)):
-                if "Ticker" in t.columns:
-                    col = "Company" if "Company" in t.columns else t.columns[0]
-                    return dict(zip(t["Ticker"], t[col]))
-        if name == "CAC 40":
-            return CAC40
-    except Exception as e:
-        st.error(f"Impossible de charger l'univers {name} : {e}")
-    return {}
-
-
-# ----------------------------------------------------------------------------
-# DONNÉES DE MARCHÉ
-# ----------------------------------------------------------------------------
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_prices(tickers: tuple, period: str = "1y") -> pd.DataFrame:
-    return yf.download(list(tickers), period=period, interval="1d", group_by="ticker",
-                       auto_adjust=True, threads=True, progress=False)
-
-
-def extract(data: pd.DataFrame, t: str) -> pd.DataFrame | None:
-    try:
-        df = data[t] if isinstance(data.columns, pd.MultiIndex) else data
-        df = df.dropna(subset=["Close"])
-        return df if len(df) else None
-    except KeyError:
-        return None
-
-
-def classify(r6, r3, amp, vol):
-    if r6 >= 100: return "🚀🚀 Hyper-croissance"
-    if r6 >= 40:  return "🚀 Fusée"
-    if r6 <= -35: return "📉 Chute libre"
-    if amp >= 80 and abs(r6) < 30: return "🎢 Montagnes russes"
-    if r3 >= 25:  return "⚡ Accélération récente"
-    if vol >= 60: return "🌪️ Très volatile"
-    return "➖ Neutre"
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def compute_metrics(_data: pd.DataFrame, names: dict, key: str) -> pd.DataFrame:
-    rows = []
-    for t, name in names.items():
-        df = extract(_data, t)
-        if df is None or len(df) < 130:
-            continue
-        c, v = df["Close"], df["Volume"]
-        last = c.iloc[-1]
-        ret = lambda n: (last / c.iloc[-n - 1] - 1) * 100 if len(c) > n else np.nan
-        lr = np.log(c).diff().dropna()
-        c6 = c.iloc[-126:]
-        r6, r3 = ret(126), ret(63)
-        amp = (c6.max() / c6.min() - 1) * 100
-        vol = lr.std() * np.sqrt(252) * 100
-        rows.append({
-            "Ticker": t, "Entreprise": name, "Prix": round(last, 2),
-            "Perf 1 mois %": ret(21), "Perf 3 mois %": r3, "Perf 6 mois %": r6,
-            "Perf 1 an %": (last / c.iloc[0] - 1) * 100,
-            "Volatilité 1 an %": vol,
-            "Volatilité 3 mois %": lr.iloc[-63:].std() * np.sqrt(252) * 100,
-            "Amplitude 6 mois %": amp,
-            "Drawdown max %": ((c / c.cummax()) - 1).min() * 100,
-            "Distance plus haut %": (last / c.max() - 1) * 100,
-            "Volume x": v.iloc[-20:].mean() / max(v.iloc[-126:].mean(), 1),
-            "Profil": classify(r6, r3, amp, vol),
-        })
-    out = pd.DataFrame(rows)
-    if out.empty:
-        return out
-    # Score d'explosivité (0-100), basé sur les rangs
-    rk = lambda col: out[col].rank(pct=True)
-    out["Score 🔥"] = (100 * (0.35 * rk("Perf 6 mois %") + 0.20 * rk("Perf 3 mois %")
-                             + 0.15 * rk("Perf 1 an %") + 0.20 * rk("Volatilité 3 mois %")
-                             + 0.10 * rk("Volume x"))).round(1)
-    return out.sort_values("Score 🔥", ascending=False).reset_index(drop=True)
-
-
-# ----------------------------------------------------------------------------
-# INDICATEURS TECHNIQUES
-# ----------------------------------------------------------------------------
-def rsi(series: pd.Series, n: int = 14) -> pd.Series:
-    d = series.diff()
-    up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False).mean()
-    dn = (-d.clip(upper=0)).ewm(alpha=1 / n, adjust=False).mean()
-    return 100 - 100 / (1 + up / dn)
-
-
-# ----------------------------------------------------------------------------
-# ACTUALITÉS
-# ----------------------------------------------------------------------------
-POS = ["beat", "surge", "soar", "record", "upgrade", "growth", "rally", "jump", "strong",
-       "hausse", "bond", "record", "croissance", "relève", "dépasse", "envol", "contrat"]
-NEG = ["miss", "plunge", "fall", "drop", "downgrade", "lawsuit", "probe", "cut", "weak",
-       "baisse", "chute", "plonge", "enquête", "sanction", "abaisse", "perte", "recul"]
-POLITICS = {
-    "🏛️ Politique monétaire": ["fed", "powell", "bce", "ecb", "lagarde", "taux", "rate", "inflation"],
-    "🛃 Commerce / Tarifs": ["tariff", "douane", "trade war", "export", "import", "sanction"],
-    "⚖️ Régulation": ["sec", "antitrust", "regulat", "régulat", "ftc", "commission européenne", "amende", "fine"],
-    "🗳️ Élections / Gouvernement": ["election", "élection", "trump", "congress", "congrès",
-                                     "gouvernement", "white house", "maison blanche", "budget"],
-    "🌍 Géopolitique": ["china", "chine", "russia", "russie", "ukraine", "israel", "iran", "taiwan", "war", "guerre"],
+MOTS_CLES = {
+    "🏛️ Taux / banques centrales": ["fed", "bce", "taux", "powell", "lagarde", "inflation"],
+    "🚢 Douane / commerce": ["douane", "douanes", "tarif", "tarifs", "tariff", "tariffs", "export", "exportations"],
+    "💶 Subventions / plans publics": ["subvention", "subventions", "chips act", "plan", "aide publique", "budget"],
+    "⚔️ Géopolitique / défense": ["guerre", "otan", "nato", "ukraine", "chine", "taïwan", "sanction", "sanctions", "défense"],
+    "⚖️ Régulation / justice": ["régulation", "antitrust", "amende", "enquête", "sec", "bruxelles", "procès"],
+    "📊 Résultats / contrats": ["résultats", "chiffre d'affaires", "bénéfice", "contrat", "commande", "prévisions", "earnings"],
 }
 
+BENCH = "^GSPC"  # S&P 500
 
-def sentiment(text: str) -> str:
-    t = text.lower()
-    s = sum(w in t for w in POS) - sum(w in t for w in NEG)
-    return "🟢 Positif" if s > 0 else "🔴 Négatif" if s < 0 else "⚪ Neutre"
+# =====================================================================
+# 2. CHARGEMENT DES DONNÉES
+# =====================================================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def charger_prix(tickers):
+    data = yf.download(list(tickers), period="1y", auto_adjust=True,
+                       progress=False, threads=True)
+    close, volume = data["Close"], data["Volume"]
+    if isinstance(close, pd.Series):
+        close, volume = close.to_frame(tickers[0]), volume.to_frame(tickers[0])
+    return close.ffill(), volume
 
 
-def tags(text: str) -> str:
-    t = text.lower()
-    return ", ".join(k for k, words in POLITICS.items() if any(w in t for w in words))
-
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def ticker_news(t: str) -> pd.DataFrame:
-    rows = []
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def charger_infos(ticker):
     try:
-        for n in yf.Ticker(t).news or []:
-            c = n.get("content", n)  # gère ancien et nouveau format yfinance
-            title = c.get("title", "")
-            date = c.get("pubDate") or c.get("providerPublishTime")
-            date = pd.to_datetime(date, unit="s" if isinstance(date, (int, float)) else None, utc=True)
-            url = (c.get("canonicalUrl") or {}).get("url") if isinstance(c.get("canonicalUrl"), dict) else c.get("link")
-            src = (c.get("provider") or {}).get("displayName", "") if isinstance(c.get("provider"), dict) else c.get("publisher", "")
-            rows.append({"Date": date, "Titre": title, "Source": src, "Lien": url})
+        return yf.Ticker(ticker).info or {}
     except Exception:
-        pass
-    return pd.DataFrame(rows)
+        return {}
+
+
+def etiqueter(texte):
+    texte = texte.lower()
+    return [cat for cat, mots in MOTS_CLES.items()
+            if any(re.search(r"\b" + re.escape(m) + r"\b", texte) for m in mots)]
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def google_news(query: str, lang: str = "fr", n: int = 25) -> pd.DataFrame:
-    gl, ceid = ("FR", "FR:fr") if lang == "fr" else ("US", "US:en")
-    url = (f"https://news.google.com/rss/search?q={requests.utils.quote(query)}"
-           f"&hl={lang}&gl={gl}&ceid={ceid}")
-    feed = feedparser.parse(url)
-    rows = [{"Date": pd.to_datetime(e.get("published"), utc=True, errors="coerce"),
-             "Titre": e.title, "Source": e.get("source", {}).get("title", ""), "Lien": e.link}
-            for e in feed.entries[:n]]
-    return pd.DataFrame(rows)
+def actualites(requete, n=8):
+    url = f"https://news.google.com/rss/search?q={quote(requete)}&hl=fr&gl=FR&ceid=FR:fr"
+    flux = feedparser.parse(url)
+    return [
+        {"titre": e.title, "lien": e.link,
+         "date": e.get("published", "")[:16], "tags": etiqueter(e.title)}
+        for e in flux.entries[:n]
+    ]
+
+# =====================================================================
+# 3. INDICATEURS ET SCORES
+# =====================================================================
+def indicateurs(close, volume, bench, etf):
+    c = close.dropna()
+    if len(c) < 130:
+        return None
+    r = c.pct_change().dropna()
+
+    def perf(s, n):
+        s = s.dropna()
+        return s.iloc[-1] / s.iloc[-n - 1] - 1 if len(s) > n else np.nan
+
+    delta = c.diff()
+    gain = delta.clip(lower=0).rolling(14).mean().iloc[-1]
+    perte = (-delta.clip(upper=0)).rolling(14).mean().iloc[-1]
+    rsi = 100 - 100 / (1 + gain / perte) if perte > 0 else 100
+
+    v = volume.dropna()
+    base = v.iloc[-120:-20].mean() if len(v) > 120 else np.nan
+    vol_ratio = v.iloc[-20:].mean() / base if base and base > 0 else np.nan
+
+    corr = r.iloc[-126:].corr(etf.pct_change().iloc[-126:])
+
+    return {
+        "prix": c.iloc[-1],
+        "perf_1m": perf(c, 21), "perf_3m": perf(c, 63), "perf_6m": perf(c, 126),
+        "perf_1a": c.iloc[-1] / c.iloc[0] - 1,
+        "ma50": c.rolling(50).mean().iloc[-1],
+        "ma200": c.rolling(min(200, len(c))).mean().iloc[-1],
+        "rsi": rsi,
+        "volatilite": r.std() * np.sqrt(252),
+        "dist_haut": c.iloc[-1] / c.max() - 1,
+        "vol_ratio": vol_ratio,
+        "force_rel": perf(c, 126) - perf(bench, 126),
+        "perf_theme": perf(etf, 126),
+        "corr_theme": corr,
+    }
 
 
-def enrich(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    df["Sentiment"] = df["Titre"].apply(sentiment)
-    df["Thème politique"] = df["Titre"].apply(tags)
-    return df.sort_values("Date", ascending=False)
+def borne(x):
+    return float(np.clip(x, 0, 100))
 
 
-# ----------------------------------------------------------------------------
-# INTERFACE
-# ----------------------------------------------------------------------------
-st.title("🚀 Radar Croissance — Entreprises à dynamique explosive")
-st.caption(f"Données Yahoo Finance & Google News • Mise à jour : {dt.datetime.now():%d/%m/%Y %H:%M} "
-           "• ⚠️ Ceci n'est pas un conseil en investissement.")
+def score_momentum(i):
+    s = 50 + i["perf_6m"] * 60 + i["force_rel"] * 40
+    s += 10 if i["prix"] > i["ma200"] else -10
+    s += 5 if i["ma50"] > i["ma200"] else -5
+    return borne(s)
 
-with st.sidebar:
-    st.header("⚙️ Paramètres")
-    univ = st.selectbox("Univers", ["Nasdaq 100", "S&P 500", "CAC 40", "Liste personnalisée"])
-    if univ == "Liste personnalisée":
-        raw = st.text_area("Tickers (séparés par des virgules)",
-                           "PLTR, NVDA, HOOD, APP, RKLB, SMCI, COIN, MSTR, SOFI, RDDT, IONQ, ASTS")
-        names = {t.strip().upper(): t.strip().upper() for t in raw.split(",") if t.strip()}
+
+def score_fondamentaux(f):
+    if not f or f.get("revenueGrowth") is None:
+        return 50.0
+    s = 40
+    rg = f.get("revenueGrowth") or 0
+    eg = f.get("earningsGrowth")
+    gm, pm = f.get("grossMargins"), f.get("profitMargins")
+    dte, fpe = f.get("debtToEquity"), f.get("forwardPE")
+    s += 25 if rg > 0.3 else 15 if rg > 0.15 else 5 if rg > 0.05 else -15 if rg < 0 else 0
+    if eg is not None:
+        s += 10 if eg > 0.25 else -10 if eg < 0 else 0
+    if gm is not None and gm > 0.5:
+        s += 10
+    if pm is not None:
+        s += 10 if pm > 0.15 else -15 if pm < 0 else 0
+    if dte is not None and dte > 200:
+        s -= 10
+    if fpe is not None:
+        s += 5 if 0 < fpe < 30 else -10 if fpe > 80 else 0
+    return borne(s)
+
+
+def score_tendance(i):
+    corr = 0 if np.isnan(i["corr_theme"]) else i["corr_theme"]
+    pt = 0 if np.isnan(i["perf_theme"]) else i["perf_theme"]
+    return borne(50 + corr * 30 + pt * 60)
+
+
+def score_risque(i, f):
+    s = 30 + (i["volatilite"] - 0.3) * 80
+    s += 15 if i["rsi"] > 75 else 0
+    s += 10 if i["dist_haut"] < -0.30 else 0
+    if f:
+        pm = f.get("profitMargins")
+        if pm is not None and pm < 0:
+            s += 15
+        fpe = f.get("forwardPE")
+        if fpe is not None and fpe > 80:
+            s += 10
+    return borne(s)
+
+
+def profil(mom, fond, risque):
+    if mom >= 60 and fond >= 60 and risque < 65:
+        return "🚀 Croissance solide"
+    if mom >= 60 and (fond < 50 or risque >= 65):
+        return "🎲 Spéculatif"
+    if mom < 50 and fond >= 60:
+        return "💎 Solide mais délaissée"
+    return "⚖️ À surveiller"
+
+# =====================================================================
+# 4. EXPLICATIONS EN FRANÇAIS
+# =====================================================================
+def pct(x):
+    return "n/a" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x * 100:+.0f} %"
+
+
+def explications(nom_theme, i, f):
+    pourquoi, vigilance, correl = [], [], []
+
+    pourquoi.append(f"Le cours a progressé de {pct(i['perf_6m'])} en 6 mois "
+                    f"(et {pct(i['perf_1a'])} sur 1 an).")
+    if i["force_rel"] > 0.1:
+        pourquoi.append(f"Elle fait mieux que le marché américain de {pct(i['force_rel'])} sur 6 mois.")
+    if i["prix"] > i["ma50"] > i["ma200"]:
+        pourquoi.append("La tendance est haussière et installée (cours au-dessus de ses moyennes 50 et 200 jours).")
+    if i["vol_ratio"] and not np.isnan(i["vol_ratio"]) and i["vol_ratio"] > 1.3:
+        pourquoi.append(f"Les volumes d'échange sont {i['vol_ratio']:.1f}x plus élevés que d'habitude : l'intérêt des investisseurs augmente.")
+    if f:
+        rg, gm, pm = f.get("revenueGrowth"), f.get("grossMargins"), f.get("profitMargins")
+        if rg is not None and rg > 0.15:
+            pourquoi.append(f"Le chiffre d'affaires croît de {pct(rg)} : la hausse est soutenue par une vraie activité.")
+        if gm is not None and gm > 0.5:
+            pourquoi.append(f"Marge brute élevée ({gm * 100:.0f} %), signe d'un produit à forte valeur.")
+        if pm is not None and pm > 0.15:
+            pourquoi.append(f"L'entreprise est rentable (marge nette {pm * 100:.0f} %).")
+
+    if i["rsi"] > 70:
+        vigilance.append(f"RSI à {i['rsi']:.0f} : le titre est en zone de surchauffe, risque de repli à court terme.")
+    if i["dist_haut"] < -0.25:
+        vigilance.append(f"Le cours est {abs(i['dist_haut']) * 100:.0f} % sous son plus haut annuel.")
+    if i["volatilite"] > 0.6:
+        vigilance.append(f"Volatilité très élevée ({i['volatilite'] * 100:.0f} % annualisée) : de fortes variations sont normales.")
+    if f:
+        if (f.get("profitMargins") or 0) < 0:
+            vigilance.append("L'entreprise ne gagne pas encore d'argent : la hausse repose sur des promesses.")
+        if (f.get("forwardPE") or 0) > 80:
+            vigilance.append("Valorisation très élevée par rapport aux bénéfices attendus.")
+        if (f.get("debtToEquity") or 0) > 200:
+            vigilance.append("Endettement important.")
+    vigilance.append(f"Risques de la thématique : {TENDANCES[nom_theme]['risques']}")
+
+    c = i["corr_theme"]
+    if not np.isnan(c):
+        if c > 0.7:
+            correl.append(f"Forte corrélation avec sa thématique ({c:.2f}) : elle monte surtout parce que tout le secteur monte.")
+        elif c < 0.4:
+            correl.append(f"Faible corrélation avec sa thématique ({c:.2f}) : sa hausse vient surtout de facteurs propres à l'entreprise.")
+        else:
+            correl.append(f"Corrélation modérée avec sa thématique ({c:.2f}).")
+    if not np.isnan(i["perf_theme"]):
+        correl.append(f"Le secteur dans son ensemble fait {pct(i['perf_theme'])} sur 6 mois.")
+    correl.append(f"Moteur de la thématique : {TENDANCES[nom_theme]['pourquoi']}")
+
+    return pourquoi, vigilance, correl
+
+# =====================================================================
+# 5. ANALYSE D'UNE THÉMATIQUE
+# =====================================================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def analyser_theme(nom_theme):
+    th = TENDANCES[nom_theme]
+    tickers = tuple(th["actions"]) + (th["etf"], BENCH)
+    close, volume = charger_prix(tickers)
+    if th["etf"] not in close or BENCH not in close:
+        return pd.DataFrame(), {}
+    lignes, details = [], {}
+    for t in th["actions"]:
+        if t not in close:
+            continue
+        i = indicateurs(close[t], volume[t], close[BENCH], close[th["etf"]])
+        if i is None:
+            continue
+        f = charger_infos(t)
+        mom, fond = score_momentum(i), score_fondamentaux(f)
+        tend, risq = score_tendance(i), score_risque(i, f)
+        lignes.append({
+            "Ticker": t, "Nom": f.get("shortName", t), "Profil": profil(mom, fond, risq),
+            "Momentum": round(mom), "Fondamentaux": round(fond),
+            "Tendance": round(tend), "Risque": round(risq),
+            "Perf 6m": i["perf_6m"], "Perf 1a": i["perf_1a"],
+        })
+        details[t] = {"i": i, "f": f, "serie": close[t].dropna()}
+    return pd.DataFrame(lignes), details
+
+# =====================================================================
+# 6. INTERFACE
+# =====================================================================
+st.title("📡 Radar Bourse 2.0")
+st.caption("Outil d'aide à la décision, pas un conseil en investissement. "
+           "Les performances passées ne garantissent pas les performances futures.")
+
+onglets = st.tabs(["🌍 Tendances mondiales", "🔎 Analyse détaillée",
+                   "💼 Mon portefeuille", "ℹ️ Aide"])
+
+# ---------------------------------------------------------------- ONGLET 1
+with onglets[0]:
+    st.subheader("Quelles thématiques portent le marché ?")
+    with st.spinner("Calcul des tendances..."):
+        resume = []
+        for nom, th in TENDANCES.items():
+            try:
+                cl, _ = charger_prix((th["etf"], BENCH))
+                if th["etf"] not in cl or len(cl[th["etf"]].dropna()) < 130:
+                    continue
+                s = cl[th["etf"]].dropna()
+                b = cl[BENCH].dropna()
+                resume.append({
+                    "Tendance": nom,
+                    "Perf 6 mois": s.iloc[-1] / s.iloc[-127] - 1,
+                    "Perf 1 an": s.iloc[-1] / s.iloc[0] - 1,
+                    "vs S&P 500 (6m)": (s.iloc[-1] / s.iloc[-127] - 1) - (b.iloc[-1] / b.iloc[-127] - 1),
+                })
+            except Exception:
+                continue
+    if resume:
+        df_res = pd.DataFrame(resume).sort_values("Perf 6 mois", ascending=False)
+        fig = px.bar(df_res, x="Perf 6 mois", y="Tendance", orientation="h",
+                     color="Perf 6 mois", color_continuous_scale="RdYlGn")
+        fig.update_layout(yaxis={"categoryorder": "total ascending"}, height=420)
+        fig.update_xaxes(tickformat=".0%")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(df_res.style.format({"Perf 6 mois": "{:+.1%}", "Perf 1 an": "{:+.1%}",
+                                          "vs S&P 500 (6m)": "{:+.1%}"}),
+                     use_container_width=True, hide_index=True)
     else:
-        names = get_universe(univ)
-    st.write(f"**{len(names)}** entreprises dans l'univers")
+        st.warning("Impossible de charger les données pour le moment. Réessayez dans un instant.")
 
-    st.subheader("Filtres")
-    min6 = st.slider("Perf. 6 mois minimum (%)", -100, 300, -100, 5)
-    minvol = st.slider("Volatilité minimum (%)", 0, 150, 0, 5)
-    profils = st.multiselect("Profils", ["🚀🚀 Hyper-croissance", "🚀 Fusée", "⚡ Accélération récente",
-                                         "🎢 Montagnes russes", "🌪️ Très volatile", "📉 Chute libre", "➖ Neutre"])
-    if st.button("🔄 Rafraîchir les données"):
-        st.cache_data.clear()
+    st.markdown("### Détail d'une thématique")
+    choix = st.selectbox("Choisissez une thématique", list(TENDANCES.keys()))
+    st.info(f"**Pourquoi elle est portée par le monde actuel :** {TENDANCES[choix]['pourquoi']}")
+    st.warning(f"**Risques :** {TENDANCES[choix]['risques']}")
 
-if not names:
-    st.stop()
+    df_t, _ = analyser_theme(choix)
+    if not df_t.empty:
+        st.dataframe(
+            df_t.sort_values("Momentum", ascending=False).style.format(
+                {"Perf 6m": "{:+.0%}", "Perf 1a": "{:+.0%}"}),
+            use_container_width=True, hide_index=True)
+        st.caption("Momentum = le cours monte-t-il ? • Fondamentaux = l'entreprise gagne-t-elle vraiment de l'argent ? "
+                   "• Tendance = le secteur la porte-t-il ? • Risque = plus c'est haut, plus c'est dangereux.")
 
-with st.spinner(f"Téléchargement de {len(names)} historiques boursiers…"):
-    data = get_prices(tuple(names.keys()))
-    metrics = compute_metrics(data, names, key=univ + str(len(names)))
+# ---------------------------------------------------------------- ONGLET 2
+with onglets[1]:
+    st.subheader("Analyse détaillée d'une entreprise")
+    c1, c2 = st.columns(2)
+    theme_sel = c1.selectbox("Thématique", list(TENDANCES.keys()), key="th_det")
+    ticker_sel = c2.selectbox("Entreprise", TENDANCES[theme_sel]["actions"])
 
-if metrics.empty:
-    st.warning("Aucune donnée exploitable.")
-    st.stop()
+    df_t, details = analyser_theme(theme_sel)
+    if ticker_sel in details:
+        d = details[ticker_sel]
+        i, f, serie = d["i"], d["f"], d["serie"]
+        ligne = df_t[df_t["Ticker"] == ticker_sel].iloc[0]
 
-f = metrics[(metrics["Perf 6 mois %"] >= min6) & (metrics["Volatilité 1 an %"] >= minvol)]
-if profils:
-    f = f[f["Profil"].isin(profils)]
+        st.markdown(f"## {ligne['Nom']} ({ticker_sel}) — {ligne['Profil']}")
+        m = st.columns(4)
+        m[0].metric("Momentum", f"{ligne['Momentum']}/100")
+        m[1].metric("Fondamentaux", f"{ligne['Fondamentaux']}/100")
+        m[2].metric("Tendance", f"{ligne['Tendance']}/100")
+        m[3].metric("Risque", f"{ligne['Risque']}/100")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🏆 Classement", "📊 Analyse détaillée",
-                                  "🌍 Actualité & politique", "🗺️ Carte du marché"])
-
-# ---------------- TAB 1 : CLASSEMENT ----------------
-with tab1:
-    c1, c2, c3, c4 = st.columns(4)
-    best = metrics.iloc[metrics["Perf 6 mois %"].idxmax()]
-    worst = metrics.iloc[metrics["Perf 6 mois %"].idxmin()]
-    c1.metric("🥇 Meilleure perf 6 mois", best["Ticker"], f"{best['Perf 6 mois %']:.1f}%")
-    c2.metric("💀 Pire perf 6 mois", worst["Ticker"], f"{worst['Perf 6 mois %']:.1f}%")
-    c3.metric("🚀 Nombre de « fusées »", int(metrics["Profil"].str.contains("🚀").sum()))
-    c4.metric("Perf 6 mois médiane", f"{metrics['Perf 6 mois %'].median():.1f}%")
-
-    pct_cols = [c for c in f.columns if "%" in c]
-    st.dataframe(
-        f.style.format({**{c: "{:+.1f}" for c in pct_cols}, "Volume x": "{:.2f}x", "Prix": "{:.2f}"})
-         .background_gradient(subset=["Perf 6 mois %", "Perf 3 mois %", "Perf 1 an %"], cmap="RdYlGn")
-         .background_gradient(subset=["Score 🔥"], cmap="Oranges"),
-        use_container_width=True, height=600)
-    st.download_button("⬇️ Exporter en CSV", f.to_csv(index=False).encode(), "radar_croissance.csv")
-
-    st.subheader("Top 20 — Performance 6 mois")
-    top = f.nlargest(20, "Perf 6 mois %")
-    st.plotly_chart(px.bar(top, x="Ticker", y="Perf 6 mois %", color="Volatilité 3 mois %",
-                           hover_name="Entreprise", color_continuous_scale="Turbo"),
-                    use_container_width=True)
-
-# ---------------- TAB 2 : ANALYSE DÉTAILLÉE ----------------
-with tab2:
-    opts = f["Ticker"].tolist() or metrics["Ticker"].tolist()
-    sel = st.selectbox("Choisir une entreprise", opts,
-                       format_func=lambda t: f"{t} — {names.get(t, t)}")
-    period = st.radio("Période", ["6mo", "1y", "2y"], index=1, horizontal=True)
-    df = extract(get_prices((sel,), period), sel)
-    row = metrics[metrics["Ticker"] == sel].iloc[0]
-
-    k = st.columns(6)
-    for col, lab in zip(k, ["Perf 1 mois %", "Perf 3 mois %", "Perf 6 mois %", "Perf 1 an %",
-                            "Volatilité 1 an %", "Drawdown max %"]):
-        col.metric(lab.replace(" %", ""), f"{row[lab]:+.1f}%")
-    st.info(f"**Profil : {row['Profil']}** • Score d'explosivité : **{row['Score 🔥']}/100** "
-            f"• Volume récent : **{row['Volume x']:.2f}x** la moyenne 6 mois")
-
-    if df is not None:
-        c = df["Close"]
-        sma20, sma50, sma200 = c.rolling(20).mean(), c.rolling(50).mean(), c.rolling(200).mean()
-        std = c.rolling(20).std()
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, row_heights=[0.6, 0.2, 0.2],
-                            vertical_spacing=0.03)
-        fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"],
-                                     close=c, name="Cours"), 1, 1)
-        for s, n, col in [(sma50, "MM50", "orange"), (sma200, "MM200", "purple")]:
-            fig.add_trace(go.Scatter(x=df.index, y=s, name=n, line=dict(color=col, width=1.5)), 1, 1)
-        fig.add_trace(go.Scatter(x=df.index, y=sma20 + 2 * std, line=dict(color="gray", width=0.5),
-                                 name="Bollinger +", showlegend=False), 1, 1)
-        fig.add_trace(go.Scatter(x=df.index, y=sma20 - 2 * std, line=dict(color="gray", width=0.5),
-                                 fill="tonexty", fillcolor="rgba(128,128,128,0.1)", name="Bollinger"), 1, 1)
-        colors = np.where(c.diff() >= 0, "green", "red")
-        fig.add_trace(go.Bar(x=df.index, y=df["Volume"], marker_color=colors, name="Volume"), 2, 1)
-        r = rsi(c)
-        fig.add_trace(go.Scatter(x=df.index, y=r, name="RSI", line=dict(color="royalblue")), 3, 1)
-        fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
-        fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
-
-        # Actualités placées sur le graphique
-        news = enrich(ticker_news(sel))
-        if not news.empty:
-            news_in = news[news["Date"].notna()]
-            for _, n in news_in.iterrows():
-                d = n["Date"].tz_convert(None).normalize()
-                if df.index[0] <= d <= df.index[-1]:
-                    fig.add_vline(x=d, line_dash="dot", line_color="gold", opacity=0.6, row=1, col=1)
-        fig.update_layout(height=800, xaxis_rangeslider_visible=False, template="plotly_dark",
-                          title=f"{sel} — {names.get(sel, sel)}")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=serie.index, y=serie, name="Cours"))
+        fig.add_trace(go.Scatter(x=serie.index, y=serie.rolling(50).mean(), name="Moyenne 50j"))
+        fig.add_trace(go.Scatter(x=serie.index, y=serie.rolling(200).mean(), name="Moyenne 200j"))
+        fig.update_layout(height=400, margin=dict(l=0, r=0, t=20, b=0))
         st.plotly_chart(fig, use_container_width=True)
 
-        # Lecture automatique
-        st.subheader("🧠 Lecture technique automatique")
-        notes = []
-        last = c.iloc[-1]
-        if not np.isnan(sma200.iloc[-1]):
-            notes.append("✅ Cours **au-dessus** de la MM200 (tendance de fond haussière)"
-                         if last > sma200.iloc[-1] else "⚠️ Cours **sous** la MM200 (tendance de fond baissière)")
-        if sma50.iloc[-1] > (sma200.iloc[-1] if not np.isnan(sma200.iloc[-1]) else np.inf):
-            notes.append("✅ MM50 > MM200 (configuration « golden cross »)")
-        notes.append(f"RSI = **{r.iloc[-1]:.0f}** → " + ("🔥 suracheté (risque de correction)" if r.iloc[-1] > 70
-                     else "🧊 survendu (rebond possible)" if r.iloc[-1] < 30 else "zone neutre"))
-        notes.append(f"Distance au plus haut 1 an : **{row['Distance plus haut %']:.1f}%**")
-        for n in notes:
-            st.markdown("- " + n)
+        pq, vg, co = explications(theme_sel, i, f)
+        a, b, cc = st.columns(3)
+        with a:
+            st.markdown("#### ✅ Pourquoi ça marche")
+            for x in pq:
+                st.write("• " + x)
+        with b:
+            st.markdown("#### ⚠️ Points de vigilance")
+            for x in vg:
+                st.write("• " + x)
+        with cc:
+            st.markdown("#### 🔗 Corrélations")
+            for x in co:
+                st.write("• " + x)
 
-        st.subheader("📰 Actualités de l'entreprise")
-        extra = enrich(google_news(f"{names.get(sel, sel)} action bourse", "fr", 15))
-        allnews = pd.concat([news, extra], ignore_index=True) if not news.empty else extra
-        if not allnews.empty:
-            st.dataframe(allnews, use_container_width=True,
-                         column_config={"Lien": st.column_config.LinkColumn("Lien")})
+        st.markdown("#### 📰 Actualité récente")
+        for n in actualites(f"{ligne['Nom']} bourse"):
+            tags = " ".join(n["tags"])
+            st.markdown(f"- [{n['titre']}]({n['lien']})  \n  <small>{n['date']} {tags}</small>",
+                        unsafe_allow_html=True)
 
-# ---------------- TAB 3 : ACTUALITÉ & POLITIQUE ----------------
-with tab3:
-    st.subheader("🌍 Décisions politiques et macroéconomiques qui font bouger les marchés")
-    topics = {
-        "🏛️ Fed / taux US": ("Federal Reserve interest rates decision", "en"),
-        "🇪🇺 BCE": ("BCE taux décision Lagarde", "fr"),
-        "🛃 Droits de douane": ("tariffs stock market", "en"),
-        "⚖️ Régulation / SEC / antitrust": ("SEC antitrust regulation stocks", "en"),
-        "🗳️ Politique US": ("White House policy stock market", "en"),
-        "🇫🇷 Politique France": ("gouvernement budget bourse CAC 40", "fr"),
-        "🌍 Géopolitique": ("geopolitics markets oil China", "en"),
-        "🤖 IA & semi-conducteurs": ("AI chips export restrictions", "en"),
-    }
-    chosen = st.multiselect("Thèmes", list(topics), default=list(topics)[:4])
-    custom = st.text_input("…ou recherche libre (ex. « Nvidia Chine export »)")
-    frames = []
-    for t in chosen:
-        q, lang = topics[t]
-        d = google_news(q, lang, 15)
-        if not d.empty:
-            d["Catégorie"] = t
-            frames.append(d)
-    if custom:
-        d = google_news(custom, "fr", 20)
-        d["Catégorie"] = "🔎 " + custom
-        frames.append(d)
-    if frames:
-        allm = enrich(pd.concat(frames, ignore_index=True))
-        s = allm["Sentiment"].value_counts()
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🟢 Positives", s.get("🟢 Positif", 0))
-        c2.metric("🔴 Négatives", s.get("🔴 Négatif", 0))
-        c3.metric("⚪ Neutres", s.get("⚪ Neutre", 0))
-        st.plotly_chart(px.histogram(allm, x="Catégorie", color="Sentiment",
-                                     color_discrete_map={"🟢 Positif": "green", "🔴 Négatif": "red",
-                                                         "⚪ Neutre": "gray"}, barmode="stack"),
-                        use_container_width=True)
-        st.dataframe(allm[["Date", "Catégorie", "Titre", "Source", "Sentiment", "Thème politique", "Lien"]],
-                     use_container_width=True, height=500,
-                     column_config={"Lien": st.column_config.LinkColumn("Lien")})
+        # --- Analyste IA optionnel (clé à mettre dans les Secrets Streamlit)
+        if "ANTHROPIC_API_KEY" in st.secrets:
+            if st.button("🤖 Générer une thèse d'investissement par IA"):
+                try:
+                    import anthropic
+                    client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+                    prompt = (
+                        f"Entreprise : {ligne['Nom']} ({ticker_sel}). Thématique : {theme_sel}.\n"
+                        f"Données : perf 6m {pct(i['perf_6m'])}, perf 1 an {pct(i['perf_1a'])}, "
+                        f"RSI {i['rsi']:.0f}, volatilité {i['volatilite']:.0%}, "
+                        f"croissance CA {f.get('revenueGrowth')}, marge nette {f.get('profitMargins')}.\n"
+                        f"Actualités : {[n['titre'] for n in actualites(ligne['Nom'] + ' bourse', 5)]}\n"
+                        "Rédige en français une thèse d'investissement courte : pourquoi l'entreprise "
+                        "progresse, lien avec les tendances mondiales, risques, et ce qu'il faudrait "
+                        "surveiller. Reste factuel, sans promettre de gains."
+                    )
+                    rep = client.messages.create(
+                        model="claude-sonnet-4-5", max_tokens=900,
+                        messages=[{"role": "user", "content": prompt}])
+                    st.markdown(rep.content[0].text)
+                except Exception as e:
+                    st.error(f"Erreur IA : {e}")
+    else:
+        st.warning("Données indisponibles pour cette entreprise.")
 
-    st.subheader("📈 Réaction des indices de référence")
-    idx = {"^GSPC": "S&P 500", "^IXIC": "Nasdaq", "^FCHI": "CAC 40", "^VIX": "VIX (peur)", "GC=F": "Or",
-           "CL=F": "Pétrole", "EURUSD=X": "EUR/USD"}
-    idata = get_prices(tuple(idx), "6mo")
-    norm = pd.DataFrame({n: extract(idata, t)["Close"] for t, n in idx.items() if extract(idata, t) is not None})
-    norm = norm.ffill().dropna()
-    st.plotly_chart(px.line(norm / norm.iloc[0] * 100, title="Base 100 sur 6 mois"),
-                    use_container_width=True)
+# ---------------------------------------------------------------- ONGLET 3
+with onglets[2]:
+    st.subheader("💼 Mon portefeuille")
+    st.caption("Vos données restent dans votre session et ne sont pas enregistrées sur le site.")
 
-# ---------------- TAB 4 : CARTE DU MARCHÉ ----------------
-with tab4:
-    st.subheader("Rendement 6 mois vs volatilité : repérer les « fusées » et les « montagnes russes »")
-    fig = px.scatter(f, x="Volatilité 1 an %", y="Perf 6 mois %", size=f["Volume x"].clip(0.1, 5),
-                     color="Profil", hover_name="Entreprise", text="Ticker", height=650)
-    fig.update_traces(textposition="top center")
-    fig.add_hline(y=0, line_dash="dot")
-    st.plotly_chart(fig, use_container_width=True)
+    mode = st.radio("Comment ajouter vos positions ?",
+                    ["✍️ Saisie manuelle", "📁 Importer un fichier CSV"], horizontal=True)
 
-    st.subheader("Treemap des performances 6 mois")
-    tm = f.copy()
-    tm["taille"] = tm["Volatilité 1 an %"].clip(lower=1)
-    st.plotly_chart(px.treemap(tm, path=["Profil", "Ticker"], values="taille",
-                               color="Perf 6 mois %", color_continuous_scale="RdYlGn",
-                               color_continuous_midpoint=0, height=650),
-                    use_container_width=True)
+    if mode.startswith("📁"):
+        st.write("Le fichier doit avoir 3 colonnes : `ticker`, `quantite`, `prix_achat`.")
+        fichier = st.file_uploader("Fichier CSV", type="csv")
+        if fichier is not None:
+            try:
+                df_p = pd.read_csv(fichier)
+                df_p.columns = [c.strip().lower() for c in df_p.columns]
+                st.session_state["portefeuille"] = df_p[["ticker", "quantite", "prix_achat"]]
+            except Exception:
+                st.error("Fichier invalide. Vérifiez les noms de colonnes.")
+    else:
+        base = st.session_state.get("portefeuille", pd.DataFrame(
+            {"ticker": ["NVDA"], "quantite": [1.0], "prix_achat": [100.0]}))
+        st.session_state["portefeuille"] = st.data_editor(
+            base, num_rows="dynamic", use_container_width=True)
+
+    pf = st.session_state.get("portefeuille")
+    if pf is not None and not pf.dropna().empty:
+        pf = pf.dropna()
+        tickers = tuple(str(t).upper().strip() for t in pf["ticker"])
+        try:
+            cl, _ = charger_prix(tickers)
+            dernier = cl.iloc[-1]
+            pf = pf.assign(ticker=list(tickers))
+            pf["Prix actuel"] = pf["ticker"].map(dernier)
+            pf["Valeur"] = pf["quantite"] * pf["Prix actuel"]
+            pf["Gain/Perte"] = pf["Valeur"] - pf["quantite"] * pf["prix_achat"]
+            pf["Perf %"] = pf["Prix actuel"] / pf["prix_achat"] - 1
+
+            total = pf["Valeur"].sum()
+            gain = pf["Gain/Perte"].sum()
+            k = st.columns(2)
+            k[0].metric("Valeur totale", f"{total:,.0f}")
+            k[1].metric("Gain / perte total", f"{gain:+,.0f}")
+            st.dataframe(pf.style.format({"Prix actuel": "{:.2f}", "Valeur": "{:,.0f}",
+                                          "Gain/Perte": "{:+,.0f}", "Perf %": "{:+.1%}"}),
+                         use_container_width=True, hide_index=True)
+
+            # répartition par tendance
+            inverse = {t: nom for nom, th in TENDANCES.items() for t in th["actions"]}
+            pf["Tendance"] = pf["ticker"].map(inverse).fillna("Autre")
+            rep = pf.groupby("Tendance")["Valeur"].sum().reset_index()
+            st.plotly_chart(px.pie(rep, names="Tendance", values="Valeur",
+                                   title="Répartition par tendance"),
+                            use_container_width=True)
+
+            # alertes
+            st.markdown("#### 🚨 Alertes")
+            ok = True
+            for _, r_ in rep.iterrows():
+                if total > 0 and r_["Valeur"] / total > 0.5:
+                    st.warning(f"Plus de 50 % de votre portefeuille est concentré sur « {r_['Tendance']} ». "
+                               "Pensez à diversifier.")
+                    ok = False
+            for _, r_ in pf.iterrows():
+                if total > 0 and r_["Valeur"] / total > 0.25:
+                    st.warning(f"{r_['ticker']} pèse plus de 25 % de votre portefeuille.")
+                    ok = False
+            if ok:
+                st.success("Pas de concentration excessive détectée.")
+
+            # idées à étudier
+            st.markdown("#### 💡 Idées à étudier (hors portefeuille)")
+            possedes = set(tickers)
+            idees = []
+            for nom in TENDANCES:
+                dft, _ = analyser_theme(nom)
+                if dft.empty:
+                    continue
+                dft = dft[(~dft["Ticker"].isin(possedes)) &
+                          (dft["Profil"] == "🚀 Croissance solide")]
+                for _, r_ in dft.iterrows():
+                    idees.append({"Tendance": nom, **r_.to_dict()})
+            if idees:
+                df_i = pd.DataFrame(idees).sort_values("Momentum", ascending=False).head(8)
+                st.dataframe(df_i[["Ticker", "Nom", "Tendance", "Profil", "Momentum",
+                                   "Fondamentaux", "Risque", "Perf 6m"]].style.format(
+                    {"Perf 6m": "{:+.0%}"}), use_container_width=True, hide_index=True)
+                st.caption("Ce sont des pistes à étudier, pas des recommandations d'achat.")
+            else:
+                st.info("Aucune idée « Croissance solide » en dehors de votre portefeuille pour l'instant.")
+        except Exception as e:
+            st.error(f"Impossible de calculer le portefeuille : {e}")
+
+# ---------------------------------------------------------------- ONGLET 4
+with onglets[3]:
+    st.markdown("""
+### Comment lire les scores
+- **Momentum** : le cours monte-t-il plus vite que le marché ?
+- **Fondamentaux** : croissance, marges, rentabilité, endettement.
+- **Tendance** : le secteur entier est-il porteur ?
+- **Risque** : plus le chiffre est haut, plus l'investissement est dangereux.
+
+### Les profils
+- 🚀 **Croissance solide** : le cours monte ET l'entreprise est saine.
+- 🎲 **Spéculatif** : le cours monte mais les fondamentaux sont fragiles.
+- 💎 **Solide mais délaissée** : bonne entreprise, cours en retard.
+- ⚖️ **À surveiller** : signaux mélangés.
+
+### Importer un CSV
+Colonnes : `ticker`, `quantite`, `prix_achat`. Exemple :
