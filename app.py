@@ -1,780 +1,437 @@
-import re
-from urllib.parse import quote
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bourse Analyse Long Terme</title>
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --primary: #2563eb;
+    --green: #16a34a;
+    --red: #dc2626;
+    --orange: #f59e0b;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e2e8f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  header {
+    background: var(--primary);
+    color: #fff;
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 1.3rem; }
+  header small { opacity: .85; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab {
+    padding: 10px 18px; border: none; border-radius: 8px;
+    background: var(--card); color: var(--text); cursor: pointer;
+    font-weight: 600; border: 1px solid var(--border);
+  }
+  .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .section { display: none; }
+  .section.active { display: block; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .card h2 { font-size: 1.1rem; margin-bottom: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .stock-card { cursor: pointer; transition: transform .15s; }
+  .stock-card:hover { transform: translateY(-2px); }
+  .ticker { font-weight: 700; font-size: 1.05rem; }
+  .price { font-size: 1.5rem; font-weight: 700; margin: 6px 0; }
+  .change.up { color: var(--green); font-weight: 600; }
+  .change.down { color: var(--red); font-weight: 600; }
+  .badge {
+    display: inline-block; padding: 4px 10px; border-radius: 999px;
+    font-size: .8rem; font-weight: 600; color: #fff;
+  }
+  .score-bar { height: 10px; background: var(--border); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+  .score-fill { height: 100%; border-radius: 999px; transition: width .4s; }
+  .btn {
+    background: var(--primary); color: #fff; border: none; padding: 10px 16px;
+    border-radius: 8px; cursor: pointer; font-weight: 600;
+  }
+  .btn:hover { opacity: .9; }
+  .btn-outline { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+  input, select {
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: .95rem; width: 100%;
+  }
+  label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .news-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .news-item:last-child { border-bottom: none; }
+  .news-item a { color: var(--primary); text-decoration: none; font-weight: 600; }
+  .news-item small { color: var(--muted); display: block; margin-top: 4px; }
+  .alert { padding: 12px 14px; border-radius: 8px; margin-bottom: 10px; font-size: .9rem; }
+  .alert.warn { background: #fef3c7; color: #92400e; }
+  .alert.ok { background: #dcfce7; color: #166534; }
+  .alert.danger { background: #fee2e2; color: #991b1b; }
+  .disclaimer { font-size: .8rem; color: var(--muted); margin-top: 20px; text-align: center; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  .status { font-size: .8rem; opacity: .85; }
+  .demo-banner {
+    background: #fef3c7; color: #92400e; padding: 8px 14px; border-radius: 8px;
+    font-size: .85rem; margin-bottom: 16px; display: none;
+  }
+  canvas { width: 100%; max-height: 260px; }
+  @media (max-width: 600px) {
+    .container { padding: 14px; }
+    .price { font-size: 1.3rem; }
+  }
+</style>
+</head>
+<body>
 
-import feedparser
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import streamlit as st
-import yfinance as yf
+<header>
+  <div>
+    <h1>📈 Bourse Analyse Long Terme</h1>
+    <small>Qualité, valorisation, risques et simulation</small>
+  </div>
+  <div class="status" id="lastUpdate">Mise à jour : --</div>
+</header>
 
-st.set_page_config(page_title="Radar Bourse 3.0", page_icon="📡", layout="wide")
+<div class="container">
 
-# =====================================================================
-# 1. TENDANCES MONDIALES (grandes + petites entreprises)
-# =====================================================================
-TENDANCES = {
-    "🤖 IA & semi-conducteurs": {
-        "etf": "SMH",
-        "actions": ["NVDA", "AVGO", "AMD", "TSM", "ASML", "PLTR", "ARM", "SOUN", "BBAI", "AI"],
-        "pourquoi": "Les géants du cloud investissent des centaines de milliards dans les data centers. Puces et logiciels d'IA sont au coeur de cette vague.",
-        "risques": "Valorisations élevées, dépendance à quelques gros clients, restrictions d'export vers la Chine, risque de bulle.",
-    },
-    "🛡️ Cybersécurité": {
-        "etf": "CIBR",
-        "actions": ["CRWD", "PANW", "ZS", "NET", "FTNT", "S", "RPD"],
-        "pourquoi": "Explosion des cyberattaques, tensions géopolitiques et nouvelles obligations réglementaires : la sécurité devient incontournable.",
-        "risques": "Concurrence forte, valorisations élevées, une panne majeure peut nuire à la réputation.",
-    },
-    "⚡ Énergie propre & électrification": {
-        "etf": "ICLN",
-        "actions": ["ENPH", "FSLR", "NEE", "PLUG", "RUN", "BE", "STEM", "SHLS"],
-        "pourquoi": "Transition énergétique, demande d'électricité tirée par l'IA et les véhicules électriques, soutien public.",
-        "risques": "Dépendance aux subventions et aux taux d'intérêt, marges fragiles, changements politiques.",
-    },
-    "🚀 Défense & spatial": {
-        "etf": "ITA",
-        "actions": ["LMT", "RTX", "RKLB", "PL", "ASTS", "LUNR", "RDW", "KTOS"],
-        "pourquoi": "Hausse des budgets militaires mondiaux, tensions géopolitiques, nouvelle économie spatiale (satellites, lanceurs).",
-        "risques": "Dépendance aux budgets publics, retards de programmes, très forte volatilité sur les petites valeurs spatiales.",
-    },
-    "🧬 Santé & biotech": {
-        "etf": "XBI",
-        "actions": ["LLY", "NVO", "VRTX", "ISRG", "REGN", "CRSP", "BEAM"],
-        "pourquoi": "Vieillissement de la population, traitements de l'obésité, thérapies géniques, IA appliquée à la découverte de médicaments.",
-        "risques": "Échecs d'essais cliniques (chute brutale), décisions réglementaires, pression sur les prix des médicaments.",
-    },
-    "💳 Fintech & paiements": {
-        "etf": "ARKF",
-        "actions": ["V", "MA", "SQ", "SOFI", "AFRM", "HOOD", "NU", "COIN"],
-        "pourquoi": "Digitalisation des paiements, banque en ligne, crypto-actifs et services financiers accessibles.",
-        "risques": "Régulation, sensibilité aux taux d'intérêt, risque de crédit, volatilité de la crypto.",
-    },
-    "☁️ Cloud & logiciels": {
-        "etf": "WCLD",
-        "actions": ["MSFT", "SNOW", "DDOG", "MDB", "NOW", "TEAM", "GTLB"],
-        "pourquoi": "Migration des entreprises vers le cloud et intégration de l'IA dans les logiciels professionnels.",
-        "risques": "Concurrence des géants, ralentissement des budgets IT, valorisations tendues.",
-    },
-    "⚛️ Quantique & technologies émergentes": {
-        "etf": "QTUM",
-        "actions": ["IONQ", "RGTI", "QBTS", "QUBT", "LUNR"],
-        "pourquoi": "Course mondiale à l'informatique quantique, financements publics et privés en forte hausse.",
-        "risques": "Technologie encore très jeune, peu de revenus, dilution du capital, risque de perte totale.",
-    },
+  <div class="demo-banner" id="demoBanner">
+    ⚠️ Données de démonstration : l'API en direct n'a pas répondu. Les cours affichés sont indicatifs.
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="dashboard">Tableau de bord</button>
+    <button class="tab" data-tab="analysis">Analyse</button>
+    <button class="tab" data-tab="news">Actualités</button>
+    <button class="tab" data-tab="simulator">Simulateur</button>
+    <button class="tab" data-tab="portfolio">Portefeuille</button>
+  </div>
+
+  <!-- TABLEAU DE BORD -->
+  <div class="section active" id="dashboard">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <h2>Liste de surveillance</h2>
+        <div style="display:flex;gap:8px">
+          <input id="newTicker" placeholder="Ticker (ex: AMZN)" style="width:200px">
+          <button class="btn" onclick="addTicker()">Ajouter</button>
+          <button class="btn btn-outline" onclick="refreshAll()">Actualiser</button>
+        </div>
+      </div>
+      <div class="grid" id="stockGrid"></div>
+    </div>
+  </div>
+
+  <!-- ANALYSE -->
+  <div class="section" id="analysis">
+    <div class="card">
+      <h2 id="analysisTitle">Sélectionnez une entreprise dans le tableau de bord</h2>
+      <div id="analysisContent"></div>
+    </div>
+  </div>
+
+  <!-- ACTUALITÉS -->
+  <div class="section" id="news">
+    <div class="card">
+      <h2>Actualités récentes</h2>
+      <div id="newsList"></div>
+    </div>
+  </div>
+
+  <!-- SIMULATEUR -->
+  <div class="section" id="simulator">
+    <div class="card">
+      <h2>Simulateur de rentabilité</h2>
+      <div class="form-row">
+        <div><label>Versement mensuel (€)</label><input type="number" id="monthly" value="100"></div>
+        <div><label>Rendement annuel attendu (%)</label><input type="number" id="rate" value="7"></div>
+        <div><label>Durée (années)</label><input type="number" id="years" value="10"></div>
+        <div><label>Capital initial (€)</label><input type="number" id="initial" value="0"></div>
+      </div>
+      <button class="btn" onclick="runSimulation()">Calculer</button>
+      <div id="simResult" style="margin-top:20px"></div>
+      <canvas id="simChart"></canvas>
+      <p class="disclaimer">Projection théorique : les rendements passés ne garantissent pas les rendements futurs.</p>
+    </div>
+  </div>
+
+  <!-- PORTEFEUILLE -->
+  <div class="section" id="portfolio">
+    <div class="card">
+      <h2>Mon portefeuille et alertes</h2>
+      <div id="portfolioContent"></div>
+    </div>
+  </div>
+
+  <p class="disclaimer">Outil pédagogique. Ce n'est pas un conseil en investissement. Investir comporte un risque de perte en capital.</p>
+</div>
+
+<script>
+// ============ DONNÉES ============
+const DEFAULT_TICKERS = ["AMZN", "GOOGL", "MSFT", "NVDA", "MC.PA", "ASML"];
+
+// Données de démonstration (utilisées si l'API échoue)
+const DEMO = {
+  "AMZN":  { name:"Amazon", price:249.67, changePct:1.2, pe:38, pegRatio:1.6, roe:22, debtEq:0.6, growth:12, score:78, sector:"Technologie / Cloud" },
+  "GOOGL": { name:"Alphabet", price:172.40, changePct:-0.4, pe:24, pegRatio:1.2, roe:30, debtEq:0.1, growth:14, score:82, sector:"Technologie / IA" },
+  "MSFT":  { name:"Microsoft", price:415.10, changePct:0.6, pe:33, pegRatio:2.0, roe:38, debtEq:0.3, growth:15, score:85, sector:"Logiciels / Cloud" },
+  "NVDA":  { name:"Nvidia", price:122.80, changePct:2.3, pe:52, pegRatio:1.3, roe:90, debtEq:0.4, growth:60, score:74, sector:"Semi-conducteurs" },
+  "MC.PA": { name:"LVMH", price:620.00, changePct:-1.1, pe:22, pegRatio:1.8, roe:25, debtEq:0.4, growth:8, score:76, sector:"Luxe" },
+  "ASML":  { name:"ASML", price:720.50, changePct:0.9, pe:35, pegRatio:1.5, roe:50, debtEq:0.2, growth:13, score:80, sector:"Équipements IA" }
+};
+
+const DEMO_NEWS = [
+  { title:"Amazon : croissance d'AWS de 39 % au T3", src:"Yahoo Finance", url:"https://finance.yahoo.com/quote/AMZN/" },
+  { title:"Les valeurs IA restent sous surveillance des investisseurs", src:"Google Actualités", url:"https://news.google.com/search?q=intelligence+artificielle+bourse" },
+  { title:"Politique commerciale et semi-conducteurs : les tensions s'intensifient", src:"Google Actualités", url:"https://news.google.com/search?q=semi-conducteurs+politique" }
+];
+
+let tickers = JSON.parse(localStorage.getItem("tickers")) || DEFAULT_TICKERS;
+let portfolio = JSON.parse(localStorage.getItem("portfolio")) || [];
+let liveData = {};
+let demoMode = false;
+let simChart = null;
+
+// ============ NAVIGATION ============
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ============ DONNÉES EN DIRECT ============
+async function fetchQuote(symbol) {
+  // Proxy public Yahoo Finance (peut être indisponible)
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1d&interval=1d`;
+  const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+  const res = await fetch(proxy);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const json = await res.json();
+  const meta = json.chart.result[0].meta;
+  const price = meta.regularMarketPrice;
+  const prev = meta.chartPreviousClose;
+  return { price, changePct: ((price - prev) / prev) * 100 };
 }
 
-ETF_MARCHE = "SPY"
-
-# Univers de scan pour les petites entreprises (liste de départ)
-UNIVERS_SMALL = [
-    "SOUN", "BBAI", "RGTI", "QBTS", "QUBT", "IONQ", "RKLB", "ASTS", "LUNR", "PL",
-    "SOFI", "HOOD", "AFRM", "PLUG", "RUN", "BE", "STEM", "SHLS", "RPD", "S",
-    "CRSP", "BEAM", "GTLB", "RDW", "KTOS",
-]
-
-DESCRIPTIONS_PROFILS = {
-    "🚀 Croissance solide": "Le cours monte ET l'entreprise est saine. Le profil le plus intéressant, mais pas sans risque.",
-    "🎲 Spéculatif": "Le cours monte fort mais les fondamentaux sont fragiles. Gros potentiel, gros risque de chute.",
-    "💎 Solide mais délaissée": "Bonne entreprise dont le cours n'a pas encore suivi. À surveiller.",
-    "⚖️ À surveiller": "Signaux mélangés, pas de conviction claire.",
+async function refreshAll() {
+  demoMode = false;
+  let failures = 0;
+  for (const t of tickers) {
+    try {
+      const q = await fetchQuote(t);
+      liveData[t] = { ...(DEMO[t] || {}), ...q };
+    } catch (e) {
+      failures++;
+      liveData[t] = DEMO[t] || { price: 0, changePct: 0, score: 50 };
+    }
+  }
+  if (failures === tickers.length) demoMode = true;
+  document.getElementById("demoBanner").style.display = demoMode ? "block" : "none";
+  document.getElementById("lastUpdate").textContent =
+    "Mise à jour : " + new Date().toLocaleTimeString("fr-FR");
+  renderDashboard();
+  renderPortfolio();
 }
 
-# =====================================================================
-# 2. DONNÉES
-# =====================================================================
-@st.cache_data(ttl=3600, show_spinner=False)
-def charger_prix(tickers, periode="1y"):
-    if not tickers:
-        return pd.DataFrame()
-    try:
-        data = yf.download(list(tickers), period=periode, auto_adjust=True,
-                           progress=False, group_by="column", threads=True)
-        if data.empty:
-            return pd.DataFrame()
-        close = data["Close"] if "Close" in data else data
-        if isinstance(close, pd.Series):
-            close = close.to_frame(name=list(tickers)[0])
-        return close.dropna(how="all")
-    except Exception:
-        return pd.DataFrame()
+// ============ TABLEAU DE BORD ============
+function scoreColor(s) {
+  if (s >= 75) return "var(--green)";
+  if (s >= 55) return "var(--orange)";
+  return "var(--red)";
+}
 
+function renderDashboard() {
+  const grid = document.getElementById("stockGrid");
+  grid.innerHTML = "";
+  tickers.forEach(t => {
+    const d = liveData[t] || DEMO[t] || { price: 0, changePct: 0, score: 50, name: t };
+    const up = d.changePct >= 0;
+    const score = d.score ?? 50;
+    const card = document.createElement("div");
+    card.className = "card stock-card";
+    card.onclick = () => showAnalysis(t);
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="ticker">${t}</span>
+        <span class="badge" style="background:${scoreColor(score)}">Score ${score}</span>
+      </div>
+      <div style="color:var(--muted);font-size:.9rem">${d.name || t}</div>
+      <div class="price">${d.price ? d.price.toFixed(2) : "--"}</div>
+      <div class="change ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${d.changePct.toFixed(2)} %</div>
+      <div class="score-bar"><div class="score-fill" style="width:${score}%;background:${scoreColor(score)}"></div></div>
+    `;
+    grid.appendChild(card);
+  });
+}
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def charger_infos(ticker):
-    try:
-        info = yf.Ticker(ticker).info
-        return info if isinstance(info, dict) else {}
-    except Exception:
-        return {}
+function addTicker() {
+  const input = document.getElementById("newTicker");
+  const t = input.value.trim().toUpperCase();
+  if (!t || tickers.includes(t)) return;
+  tickers.push(t);
+  localStorage.setItem("tickers", JSON.stringify(tickers));
+  input.value = "";
+  refreshAll();
+}
 
+// ============ ANALYSE ============
+function showAnalysis(t) {
+  document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.querySelector('[data-tab="analysis"]').classList.add("active");
+  document.getElementById("analysis").classList.add("active");
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def charger_actus(ticker):
-    try:
-        url = f"https://news.google.com/rss/search?q={quote(ticker + ' stock')}&hl=fr&gl=FR&ceid=FR:fr"
-        flux = feedparser.parse(url)
-        return [{"titre": e.get("title", ""), "lien": e.get("link", ""),
-                 "date": e.get("published", "")} for e in flux.entries[:6]]
-    except Exception:
-        return []
+  const d = liveData[t] || DEMO[t] || {};
+  document.getElementById("analysisTitle").textContent = `${d.name || t} (${t})`;
 
-# =====================================================================
-# 3. CALCULS DE PERFORMANCE ET DE RISQUE
-# =====================================================================
-def perf(serie, jours):
-    s = serie.dropna()
-    if len(s) < 2:
-        return np.nan
-    n = min(jours, len(s) - 1)
-    return (s.iloc[-1] / s.iloc[-1 - n] - 1) * 100
+  const checks = [
+    { label:"Rentabilité (ROE)", ok: d.roe >= 15, value: (d.roe ?? "--") + " %" },
+    { label:"Endettement faible", ok: d.debtEq <= 0.8, value: d.debtEq ?? "--" },
+    { label:"Croissance", ok: d.growth >= 8, value: (d.growth ?? "--") + " %" },
+    { label:"Valorisation raisonnable (PEG < 1,5)", ok: d.pegRatio <= 1.5, value: d.pegRatio ?? "--" }
+  ];
 
+  const rows = checks.map(c => `
+    <tr>
+      <td>${c.label}</td>
+      <td>${c.value}</td>
+      <td><span class="badge" style="background:${c.ok ? "var(--green)" : "var(--red)"}">${c.ok ? "OK" : "Vigilance"}</span></td>
+    </tr>`).join("");
 
-def volatilite_annuelle(serie):
-    r = serie.dropna().pct_change().dropna()
-    if len(r) < 20:
-        return np.nan
-    return r.std() * np.sqrt(252) * 100
+  const score = d.score ?? 50;
+  document.getElementById("analysisContent").innerHTML = `
+    <p style="margin-bottom:12px"><strong>Secteur :</strong> ${d.sector || "--"}</p>
+    <p style="margin-bottom:12px"><strong>Score de qualité :</strong>
+      <span class="badge" style="background:${scoreColor(score)}">${score} / 100</span></p>
+    <div class="score-bar" style="margin-bottom:20px"><div class="score-fill" style="width:${score}%;background:${scoreColor(score)}"></div></div>
+    <table>
+      <tr><th>Critère</th><th>Valeur</th><th>Statut</th></tr>
+      ${rows}
+    </table>
+    <div style="margin-top:16px" class="alert ok">
+      Lecture : un score élevé et des critères validés suggèrent une entreprise solide. Ce n'est pas une garantie de performance.
+    </div>
+    <div class="alert warn">
+      Risques à surveiller : valorisation (P/E ${d.pe ?? "--"}), dépendance au secteur, actualité réglementaire.
+    </div>
+  `;
+}
 
+// ============ ACTUALITÉS ============
+async function loadNews() {
+  // Flux Google News RSS via proxy
+  const list = document.getElementById("newsList");
+  list.innerHTML = "<p>Chargement…</p>";
+  try {
+    const rss = "https://news.google.com/rss/search?q=bourse+actions&hl=fr&gl=FR&ceid=FR:fr";
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(rss)}`);
+    const xml = new DOMParser().parseFromString(await res.text(), "text/xml");
+    const items = [...xml.querySelectorAll("item")].slice(0, 10);
+    if (!items.length) throw new Error("vide");
+    list.innerHTML = items.map(i => `
+      <div class="news-item">
+        <a href="${i.querySelector("link").textContent}" target="_blank">${i.querySelector("title").textContent}</a>
+        <small>${new Date(i.querySelector("pubDate").textContent).toLocaleString("fr-FR")}</small>
+      </div>`).join("");
+  } catch (e) {
+    list.innerHTML = DEMO_NEWS.map(n => `
+      <div class="news-item">
+        <a href="${n.url}" target="_blank">${n.title}</a>
+        <small>${n.src} (exemple)</small>
+      </div>`).join("");
+  }
+}
 
-def drawdown_max(serie):
-    s = serie.dropna()
-    if len(s) < 2:
-        return np.nan
-    sommet = s.cummax()
-    return ((s / sommet - 1).min()) * 100
+// ============ SIMULATEUR ============
+function runSimulation() {
+  const m = +document.getElementById("monthly").value;
+  const r = (+document.getElementById("rate").value) / 100 / 12;
+  const y = +document.getElementById("years").value;
+  const init = +document.getElementById("initial").value;
 
+  let value = init;
+  const labels = [], values = [], invested = [];
+  let totalInvested = init;
 
-def hausse_parabolique(serie):
-    s = serie.dropna()
-    if len(s) < 60:
-        return False
-    return perf(s, 60) > 80
-
-
-def classer_capitalisation(cap):
-    if cap is None or pd.isna(cap) or cap == 0:
-        return "Inconnue"
-    if cap < 300e6:
-        return "Micro-cap"
-    if cap < 2e9:
-        return "Petite cap"
-    if cap < 10e9:
-        return "Moyenne cap"
-    return "Grande cap"
-
-# =====================================================================
-# 4. SCORES
-# =====================================================================
-def score_momentum(p1m, p3m, p6m, p12m, p6m_marche):
-    pts = 0.0
-    for p in (p3m, p6m):
-        if pd.notna(p):
-            pts += min(max(p, -20), 80) / 80 * 35
-    if pd.notna(p6m) and pd.notna(p6m_marche):
-        rel = p6m - p6m_marche
-        pts += min(max(rel, -20), 60) / 60 * 20
-    if pd.notna(p1m) and p1m > 0:
-        pts += 5
-    if pd.notna(p12m) and p12m > 0:
-        pts += 5
-    return round(min(max(pts, 0), 100), 1)
-
-
-def score_fondamentaux(info):
-    pts, poids = 0.0, 0.0
-
-    def ajoute(valeur, bas, haut, poids_c):
-        nonlocal pts, poids
-        if valeur is None or pd.isna(valeur):
-            return
-        pts += min(max((valeur - bas) / (haut - bas), 0), 1) * poids_c
-        poids += poids_c
-
-    ajoute(info.get("revenueGrowth"), 0.0, 0.40, 30)
-    ajoute(info.get("earningsGrowth"), 0.0, 0.50, 15)
-    ajoute(info.get("grossMargins"), 0.20, 0.70, 15)
-    ajoute(info.get("operatingMargins"), 0.0, 0.30, 15)
-    ajoute(info.get("returnOnEquity"), 0.0, 0.30, 10)
-    dette = info.get("debtToEquity")
-    if dette is not None and not pd.isna(dette):
-        pts += (1 - min(max(dette, 0), 300) / 300) * 15
-        poids += 15
-    if poids == 0:
-        return np.nan
-    return round(pts / poids * 100, 1)
-
-
-def score_risque(vol, drawdown, cap_classe, parabolique, fond):
-    pts = 0.0
-    if pd.notna(vol):
-        pts += min(vol, 100) / 100 * 40
-    else:
-        pts += 20
-    if pd.notna(drawdown):
-        pts += min(abs(drawdown), 60) / 60 * 25
-    else:
-        pts += 12
-    pts += {"Grande cap": 0, "Moyenne cap": 5, "Petite cap": 12,
-            "Micro-cap": 20, "Inconnue": 10}.get(cap_classe, 10)
-    if parabolique:
-        pts += 10
-    if pd.notna(fond) and fond < 35:
-        pts += 5
-    return round(min(pts, 100), 1)
-
-
-def profil(mom, fond, risque):
-    if pd.isna(fond):
-        return "🎲 Spéculatif" if mom >= 55 else "⚖️ À surveiller"
-    if mom >= 55 and fond >= 55 and risque < 70:
-        return "🚀 Croissance solide"
-    if mom >= 55 and fond < 40:
-        return "🎲 Spéculatif"
-    if mom < 45 and fond >= 60:
-        return "💎 Solide mais délaissée"
-    return "⚖️ À surveiller"
-
-
-def badges(cap_classe, volume_moyen, parabolique, vol):
-    b = []
-    if cap_classe in ("Micro-cap", "Petite cap"):
-        b.append(f"⚠️ {cap_classe}")
-    if volume_moyen is not None and volume_moyen < 300_000:
-        b.append("💧 Faible liquidité")
-    if parabolique:
-        b.append("📈 Hausse parabolique")
-    if pd.notna(vol) and vol > 70:
-        b.append("🌪️ Très volatile")
-    return b
-
-# =====================================================================
-# 5. ANALYSE COMPLÈTE D'UN TICKER
-# =====================================================================
-def analyser_ticker(ticker, serie, serie_marche, tendance=None):
-    info = charger_infos(ticker)
-    p1m, p3m, p6m = perf(serie, 21), perf(serie, 63), perf(serie, 126)
-    p12m = perf(serie, 252)
-    p6m_marche = perf(serie_marche, 126) if serie_marche is not None else np.nan
-    vol = volatilite_annuelle(serie)
-    dd = drawdown_max(serie)
-    cap = info.get("marketCap")
-    cap_classe = classer_capitalisation(cap)
-    parab = hausse_parabolique(serie)
-    mom = score_momentum(p1m, p3m, p6m, p12m, p6m_marche)
-    fond = score_fondamentaux(info)
-    risque = score_risque(vol, dd, cap_classe, parab, fond)
-    prof = profil(mom, fond, risque)
-    return {
-        "Ticker": ticker,
-        "Nom": info.get("shortName", ticker),
-        "Secteur": info.get("sector", "n/a"),
-        "Tendance": tendance or "Recherche libre",
-        "Capitalisation": cap_classe,
-        "Cap ($)": cap,
-        "Perf 1m %": round(p1m, 1) if pd.notna(p1m) else np.nan,
-        "Perf 3m %": round(p3m, 1) if pd.notna(p3m) else np.nan,
-        "Perf 6m %": round(p6m, 1) if pd.notna(p6m) else np.nan,
-        "Perf 12m %": round(p12m, 1) if pd.notna(p12m) else np.nan,
-        "Volatilité %": round(vol, 1) if pd.notna(vol) else np.nan,
-        "Drawdown max %": round(dd, 1) if pd.notna(dd) else np.nan,
-        "Momentum": mom,
-        "Fondamentaux": fond,
-        "Risque": risque,
-        "Profil": prof,
-        "Badges": " ".join(badges(cap_classe, info.get("averageVolume"), parab, vol)),
-        "Croiss. CA %": round(info["revenueGrowth"] * 100, 1) if info.get("revenueGrowth") is not None else np.nan,
-        "Marge op. %": round(info["operatingMargins"] * 100, 1) if info.get("operatingMargins") is not None else np.nan,
-        "Dette/Fonds propres": info.get("debtToEquity", np.nan),
-        "PER prévisionnel": info.get("forwardPE", np.nan),
-        "Description": info.get("longBusinessSummary", ""),
+  for (let year = 1; year <= y; year++) {
+    for (let mo = 0; mo < 12; mo++) {
+      value = value * (1 + r) + m;
+      totalInvested += m;
     }
+    labels.push("An " + year);
+    values.push(Math.round(value));
+    invested.push(Math.round(totalInvested));
+  }
 
-# =====================================================================
-# 6. PLAN D'INVESTISSEMENT (taille, durée, scénarios, stop-loss)
-# =====================================================================
-def plan_investissement(ligne, serie, capital):
-    risque = ligne["Risque"]
-    vol = ligne["Volatilité %"]
-    dd = ligne["Drawdown max %"]
+  document.getElementById("simResult").innerHTML = `
+    <div class="grid">
+      <div class="card"><small>Total investi</small><div class="price">${Math.round(totalInvested).toLocaleString("fr-FR")} €</div></div>
+      <div class="card"><small>Valeur estimée</small><div class="price" style="color:var(--green)">${Math.round(value).toLocaleString("fr-FR")} €</div></div>
+      <div class="card"><small>Gain estimé</small><div class="price">${Math.round(value - totalInvested).toLocaleString("fr-FR")} €</div></div>
+    </div>`;
 
-    if risque < 35:
-        pct_max, label = 8, "Risque modéré"
-    elif risque < 50:
-        pct_max, label = 5, "Risque moyen"
-    elif risque < 65:
-        pct_max, label = 3, "Risque élevé"
-    elif risque < 80:
-        pct_max, label = 2, "Risque très élevé"
-    else:
-        pct_max, label = 1, "Risque extrême"
+  if (simChart) simChart.destroy();
+  simChart = new Chart(document.getElementById("simChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label:"Valeur estimée", data: values, borderColor:"#2563eb", backgroundColor:"rgba(37,99,235,.1)", fill:true, tension:.3 },
+        { label:"Montant investi", data: invested, borderColor:"#64748b", borderDash:[5,5], tension:.3 }
+      ]
+    },
+    options: { responsive:true, plugins:{ legend:{ position:"bottom" } } }
+  });
+}
 
-    if ligne["Profil"] == "🚀 Croissance solide":
-        horizon = "Moyen à long terme (1 à 3 ans)"
-        raison = "Les fondamentaux soutiennent la hausse : mieux vaut laisser le temps jouer."
-    elif ligne["Profil"] == "🎲 Spéculatif":
-        horizon = "Court terme (3 à 6 mois), avec suivi serré"
-        raison = "La hausse repose surtout sur l'élan du marché : il faut surveiller et être prêt à sortir."
-    elif ligne["Profil"] == "💎 Solide mais délaissée":
-        horizon = "Long terme (2 à 5 ans)"
-        raison = "Entreprise saine dont le cours peut rattraper son retard, mais cela peut prendre du temps."
-    else:
-        horizon = "Observation d'abord, pas d'urgence"
-        raison = "Pas de signal clair : attendre une meilleure configuration."
+// ============ PORTEFEUILLE ============
+function renderPortfolio() {
+  const el = document.getElementById("portfolioContent");
+  const alerts = [];
 
-    vol_eff = vol if pd.notna(vol) else 50
-    stop_pct = min(max(vol_eff * 0.4, 8), 35)
+  tickers.forEach(t => {
+    const d = liveData[t] || DEMO[t] || {};
+    if (d.pegRatio > 2) alerts.push({ type:"danger", msg:`${t} : valorisation élevée (PEG ${d.pegRatio}).` });
+    if (d.debtEq > 1) alerts.push({ type:"warn", msg:`${t} : endettement à surveiller (${d.debtEq}).` });
+    if (d.changePct <= -3) alerts.push({ type:"warn", msg:`${t} : baisse marquée aujourd'hui (${d.changePct.toFixed(1)} %).` });
+  });
 
-    montant_max = capital * pct_max / 100
-    perte_stop = montant_max * stop_pct / 100
+  if (!alerts.length) alerts.push({ type:"ok", msg:"Aucune alerte pour le moment." });
 
-    # Scénarios sur 12 mois, fondés sur la volatilité historique
-    sigma = vol_eff / 100
-    scenarios = {
-        "Pessimiste (défavorable)": -1.0 * sigma,
-        "Central (neutre)": 0.0,
-        "Optimiste (favorable)": 1.0 * sigma,
-    }
-    return {
-        "pct_max": pct_max, "label_risque": label, "horizon": horizon,
-        "raison_horizon": raison, "stop_pct": round(stop_pct, 1),
-        "montant_max": round(montant_max, 2), "perte_stop": round(perte_stop, 2),
-        "scenarios": scenarios, "sigma": sigma,
-        "pire_cas": dd,
-    }
+  el.innerHTML = `
+    <p style="margin-bottom:14px;color:var(--muted)">Alertes basées sur valorisation, endettement et variations du jour.</p>
+    ${alerts.map(a => `<div class="alert ${a.type}">${a.msg}</div>`).join("")}
+    <p style="margin-top:16px;color:var(--muted);font-size:.85rem">
+      Règle de diversification : aucune position ne devrait dépasser 10 % du portefeuille.
+    </p>`;
+}
 
+// ============ CHARGEMENT ============
+document.querySelector('[data-tab="news"]').addEventListener("click", loadNews);
+refreshAll();
+setInterval(refreshAll, 5 * 60 * 1000); // actualisation automatique toutes les 5 min
+</script>
 
-def explication(ligne, tendance_info):
-    t = []
-    mom, fond, risque = ligne["Momentum"], ligne["Fondamentaux"], ligne["Risque"]
-    if mom >= 65:
-        t.append(f"📈 **Élan fort** : {ligne['Perf 6m %']} % sur 6 mois, le marché récompense clairement ce titre.")
-    elif mom >= 45:
-        t.append(f"📊 **Élan correct** : {ligne['Perf 6m %']} % sur 6 mois, sans excès.")
-    else:
-        t.append(f"📉 **Élan faible** : {ligne['Perf 6m %']} % sur 6 mois, le marché n'est pas convaincu.")
-    if pd.notna(fond):
-        if fond >= 65:
-            t.append("🏗️ **Fondamentaux solides** : croissance, marges et endettement sont globalement sains.")
-        elif fond >= 40:
-            t.append("🏗️ **Fondamentaux moyens** : certains indicateurs sont bons, d'autres fragiles.")
-        else:
-            t.append("🏗️ **Fondamentaux faibles** : l'entreprise est peu rentable ou très endettée. La hausse est surtout de la spéculation.")
-    else:
-        t.append("🏗️ **Fondamentaux indisponibles** : données financières insuffisantes, prudence.")
-    if tendance_info:
-        t.append(f"🌍 **Contexte** : {tendance_info['pourquoi']}")
-    if risque >= 65:
-        t.append("🔥 **Risque élevé** : forte volatilité et/ou petite taille. Une perte importante est possible.")
-    if "Hausse parabolique" in ligne["Badges"]:
-        t.append("⚠️ **Hausse parabolique** : le titre a explosé en peu de temps. Historiquement, ces hausses se retournent souvent brutalement.")
-    if tendance_info:
-        t.append(f"⚠️ **Risques de la tendance** : {tendance_info['risques']}")
-    return t
-# =====================================================================
-# 7. ÉTAT DE LA SESSION (watchlist, portefeuille fictif)
-# =====================================================================
-if "watchlist" not in st.session_state:
-    st.session_state.watchlist = []
-if "papier" not in st.session_state:
-    st.session_state.papier = []
-
-
-def tendance_de(ticker):
-    for nom, t in TENDANCES.items():
-        if ticker in t["actions"]:
-            return nom
-    return None
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def analyser_liste(tickers_tuple, tendances_tuple):
-    tickers = list(tickers_tuple)
-    prix = charger_prix(tuple(tickers + [ETF_MARCHE]), "1y")
-    if prix.empty:
-        return pd.DataFrame(), prix
-    marche = prix[ETF_MARCHE] if ETF_MARCHE in prix else None
-    lignes = []
-    for tk, tend in zip(tickers, tendances_tuple):
-        if tk in prix.columns and prix[tk].dropna().shape[0] > 30:
-            lignes.append(analyser_ticker(tk, prix[tk], marche, tend))
-    return pd.DataFrame(lignes), prix
-
-
-# =====================================================================
-# 8. BARRE LATÉRALE (filtres)
-# =====================================================================
-st.title("📡 Radar Bourse 3.0")
-st.caption("Détection des entreprises en forte progression, analyse expliquée et plan d'investissement. Outil pédagogique : ce n'est pas un conseil en investissement.")
-
-with st.sidebar:
-    st.header("🎛️ Paramètres")
-    capital = st.number_input("💶 Votre capital total (€)", min_value=100, value=5000, step=100)
-    st.subheader("Filtres")
-    tendances_choisies = st.multiselect("Tendances", list(TENDANCES.keys()),
-                                        default=list(TENDANCES.keys()))
-    inclure_small = st.checkbox("Inclure le scanner de petites entreprises", value=True)
-    caps_ok = st.multiselect("Tailles d'entreprise",
-                             ["Grande cap", "Moyenne cap", "Petite cap", "Micro-cap", "Inconnue"],
-                             default=["Grande cap", "Moyenne cap", "Petite cap", "Micro-cap", "Inconnue"])
-    mom_min = st.slider("Momentum minimum", 0, 100, 0)
-    risque_max = st.slider("Risque maximum", 0, 100, 100)
-    profils_ok = st.multiselect("Profils", list(DESCRIPTIONS_PROFILS.keys()),
-                                default=list(DESCRIPTIONS_PROFILS.keys()))
-
-# Construction de l'univers
-tickers, tends = [], []
-for nom in tendances_choisies:
-    for tk in TENDANCES[nom]["actions"]:
-        if tk not in tickers:
-            tickers.append(tk)
-            tends.append(nom)
-if inclure_small:
-    for tk in UNIVERS_SMALL:
-        if tk not in tickers:
-            tickers.append(tk)
-            tends.append(tendance_de(tk) or "Scanner petites caps")
-
-with st.spinner("Analyse du marché en cours (30 à 60 secondes la première fois)..."):
-    df, prix = analyser_liste(tuple(tickers), tuple(tends))
-
-if df.empty:
-    st.error("Impossible de charger les données pour le moment. Réessayez dans quelques minutes.")
-    st.stop()
-
-df_f = df[
-    df["Capitalisation"].isin(caps_ok)
-    & (df["Momentum"] >= mom_min)
-    & (df["Risque"] <= risque_max)
-    & df["Profil"].isin(profils_ok)
-].copy()
-
-# =====================================================================
-# 9. ONGLETS
-# =====================================================================
-onglets = st.tabs([
-    "🏆 Classement", "🔍 Recherche libre", "📋 Fiche & plan", "⚖️ Comparateur",
-    "🌍 Tendances", "⭐ Watchlist", "🧪 Backtest", "📓 Mode papier",
-    "💼 Mon portefeuille", "❓ Aide",
-])
-
-# ---------- Onglet 1 : Classement ----------
-with onglets[0]:
-    st.subheader("🏆 Classement des entreprises")
-    st.write(f"**{len(df_f)}** entreprises correspondent à vos filtres (sur {len(df)} analysées).")
-    if df_f.empty:
-        st.info("Aucune entreprise ne correspond. Assouplissez les filtres à gauche.")
-    else:
-        tri = st.selectbox("Trier par", ["Momentum", "Fondamentaux", "Perf 6m %", "Perf 3m %", "Risque"])
-        df_aff = df_f.sort_values(tri, ascending=(tri == "Risque"))
-        cols = ["Ticker", "Nom", "Tendance", "Capitalisation", "Perf 3m %", "Perf 6m %",
-                "Perf 12m %", "Momentum", "Fondamentaux", "Risque", "Profil", "Badges"]
-        st.dataframe(df_aff[cols], use_container_width=True, hide_index=True, height=450)
-
-        fig = px.scatter(
-            df_aff, x="Risque", y="Perf 6m %", size="Momentum", color="Profil",
-            hover_name="Nom", text="Ticker",
-            title="Rendement sur 6 mois selon le risque (haut-gauche = idéal)",
-        )
-        fig.update_traces(textposition="top center")
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Plus un point est en haut à gauche, meilleur est le rapport rendement/risque. Les grosses bulles ont un fort momentum.")
-
-# ---------- Onglet 2 : Recherche libre ----------
-with onglets[1]:
-    st.subheader("🔍 Analyser n'importe quelle entreprise")
-    st.write("Entrez un ou plusieurs tickers séparés par des virgules. Pour l'Europe, ajoutez le suffixe : `.PA` (Paris), `.DE` (Allemagne), `.AS` (Amsterdam).")
-    saisie = st.text_input("Tickers", placeholder="Ex : RKLB, SOUN, MC.PA, ASML.AS")
-    if saisie:
-        liste = [x.strip().upper() for x in saisie.split(",") if x.strip()]
-        res, _ = analyser_liste(tuple(liste), tuple([tendance_de(x) or "Recherche libre" for x in liste]))
-        if res.empty:
-            st.warning("Aucune donnée trouvée. Vérifiez l'orthographe du ticker.")
-        else:
-            st.dataframe(res[["Ticker", "Nom", "Capitalisation", "Perf 6m %", "Perf 12m %",
-                              "Momentum", "Fondamentaux", "Risque", "Profil", "Badges"]],
-                         use_container_width=True, hide_index=True)
-            st.info("Pour le plan d'investissement détaillé, allez dans l'onglet « Fiche & plan » : ces tickers y seront disponibles après analyse.")
-            st.session_state["recherche"] = res
-
-# ---------- Onglet 3 : Fiche & plan ----------
-with onglets[2]:
-    st.subheader("📋 Fiche détaillée et plan d'investissement")
-    base = pd.concat([df, st.session_state.get("recherche", pd.DataFrame())]).drop_duplicates("Ticker")
-    choix = st.selectbox("Choisissez une entreprise", base["Ticker"] + " - " + base["Nom"].astype(str))
-    tk = choix.split(" - ")[0]
-    ligne = base[base["Ticker"] == tk].iloc[0]
-    serie = charger_prix((tk,), "1y")[tk].dropna()
-    marche = charger_prix((ETF_MARCHE,), "1y")[ETF_MARCHE].dropna()
-
-    st.markdown(f"### {ligne['Nom']} ({tk}) {ligne['Profil']}")
-    if ligne["Badges"]:
-        st.warning(ligne["Badges"])
-    st.caption(DESCRIPTIONS_PROFILS.get(ligne["Profil"], ""))
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Momentum", f"{ligne['Momentum']}/100")
-    c2.metric("Fondamentaux", f"{ligne['Fondamentaux']}/100" if pd.notna(ligne["Fondamentaux"]) else "n/a")
-    c3.metric("Risque", f"{ligne['Risque']}/100")
-    c4.metric("Perf 6 mois", f"{ligne['Perf 6m %']} %")
-
-    # Graphique prix vs marché
-    n = min(len(serie), len(marche))
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=serie.index, y=serie / serie.iloc[0] * 100, name=tk))
-    fig.add_trace(go.Scatter(x=marche.index, y=marche / marche.iloc[0] * 100,
-                             name="Marché (S&P 500)", line=dict(dash="dot")))
-    fig.update_layout(title="Évolution comparée (base 100 il y a 1 an)", height=380)
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("#### 🧠 Pourquoi ce résultat ?")
-    tinfo = TENDANCES.get(ligne["Tendance"])
-    for phrase in explication(ligne, tinfo):
-        st.markdown(f"- {phrase}")
-
-    # Plan d'investissement
-    st.markdown("#### 💰 Plan d'investissement (repère pédagogique)")
-    plan = plan_investissement(ligne, serie, capital)
-    p1, p2, p3 = st.columns(3)
-    p1.metric("Niveau de risque", plan["label_risque"])
-    p2.metric("Part max suggérée", f"{plan['pct_max']} % du capital")
-    p3.metric("Montant max", f"{plan['montant_max']} €")
-    st.markdown(f"**⏱️ Horizon :** {plan['horizon']}  \n_{plan['raison_horizon']}_")
-    st.markdown(f"**🛑 Stop-loss indicatif :** environ **-{plan['stop_pct']} %** depuis votre prix d'achat. "
-                f"Sur {plan['montant_max']} €, cela limiterait la perte à environ **{plan['perte_stop']} €**.")
-    if pd.notna(plan["pire_cas"]):
-        pire = plan["montant_max"] * (1 + plan["pire_cas"] / 100)
-        st.markdown(f"**📉 Pire moment de l'année écoulée :** {plan['pire_cas']} %. "
-                    f"Sur {plan['montant_max']} €, votre position serait tombée à environ **{round(pire, 2)} €**.")
-
-    st.markdown("**🔮 Scénarios à 12 mois (basés sur la volatilité passée, pas une prévision) :**")
-    lignes_sc = []
-    for nom, mult in plan["scenarios"].items():
-        gain = plan["montant_max"] * mult
-        lignes_sc.append({"Scénario": nom, "Variation": f"{mult * 100:+.0f} %",
-                          "Sur le montant max": f"{gain:+.0f} €"})
-    st.table(pd.DataFrame(lignes_sc))
-    st.caption("Ces scénarios illustrent l'amplitude possible des mouvements. Ils ne sont pas des prévisions et le passé ne garantit pas l'avenir.")
-
-    # Simulateur "et si"
-    st.markdown("#### 🎮 Simulateur « Et si j'avais investi ? »")
-    mise = st.slider("Montant investi (€)", 100, 10000, 1000, 100)
-    mois = st.select_slider("Il y a combien de mois ?", options=[1, 3, 6, 9, 12], value=6)
-    jours = {1: 21, 3: 63, 6: 126, 9: 189, 12: 251}[mois]
-    jours = min(jours, len(serie) - 1)
-    valeur = mise * serie.iloc[-1] / serie.iloc[-1 - jours]
-    st.success(f"Vos {mise} € seraient aujourd'hui à environ **{valeur:.0f} €** ({valeur - mise:+.0f} €).")
-
-    # Actualités
-    st.markdown("#### 📰 Actualités récentes")
-    for a in charger_actus(tk):
-        st.markdown(f"- [{a['titre']}]({a['lien']})")
-
-    # Actions
-    b1, b2 = st.columns(2)
-    if b1.button("⭐ Ajouter à la watchlist"):
-        if tk not in st.session_state.watchlist:
-            st.session_state.watchlist.append(tk)
-        st.success("Ajouté.")
-    if b2.button("📓 Acheter en mode papier (montant max)"):
-        st.session_state.papier.append({"ticker": tk, "prix": float(serie.iloc[-1]),
-                                        "montant": plan["montant_max"]})
-        st.success("Position fictive ouverte.")
-
-    # Analyste IA optionnel
-    if "ANTHROPIC_API_KEY" in st.secrets:
-        if st.button("🤖 Demander un avis à l'analyste IA"):
-            try:
-                import anthropic
-                client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-                actus = "\n".join(a["titre"] for a in charger_actus(tk))
-                prompt = (f"Analyse {ligne['Nom']} ({tk}). Momentum {ligne['Momentum']}, "
-                          f"fondamentaux {ligne['Fondamentaux']}, risque {ligne['Risque']}, "
-                          f"perf 6m {ligne['Perf 6m %']}%. Actualités :\n{actus}\n"
-                          "Donne en français une analyse équilibrée (points forts, risques, "
-                          "contexte mondial) en 150 mots, sans conseil d'achat.")
-                rep = client.messages.create(model="claude-sonnet-4-5", max_tokens=500,
-                                             messages=[{"role": "user", "content": prompt}])
-                st.info(rep.content[0].text)
-            except Exception as e:
-                st.error(f"Analyste IA indisponible : {e}")
-
-# ---------- Onglet 4 : Comparateur ----------
-with onglets[3]:
-    st.subheader("⚖️ Comparer des entreprises")
-    sel = st.multiselect("Choisissez 2 à 4 entreprises", list(df["Ticker"]), max_selections=4)
-    if len(sel) >= 2:
-        fig = go.Figure()
-        for s in sel:
-            sr = prix[s].dropna()
-            fig.add_trace(go.Scatter(x=sr.index, y=sr / sr.iloc[0] * 100, name=s))
-        fig.update_layout(title="Performance comparée (base 100)", height=400)
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(df[df["Ticker"].isin(sel)][["Ticker", "Nom", "Perf 6m %", "Momentum",
-                                                  "Fondamentaux", "Risque", "Volatilité %", "Profil"]],
-                     use_container_width=True, hide_index=True)
-    else:
-        st.info("Sélectionnez au moins 2 entreprises.")
-
-# ---------- Onglet 5 : Tendances ----------
-with onglets[4]:
-    st.subheader("🌍 Les grandes tendances")
-    for nom, t in TENDANCES.items():
-        sous = df[df["Tendance"] == nom]
-        with st.expander(f"{nom} ({len(sous)} entreprises)"):
-            st.markdown(f"**Pourquoi ça porte :** {t['pourquoi']}")
-            st.markdown(f"**Risques :** {t['risques']}")
-            if not sous.empty:
-                st.dataframe(sous.sort_values("Momentum", ascending=False)[
-                    ["Ticker", "Nom", "Perf 6m %", "Momentum", "Fondamentaux", "Risque", "Profil"]],
-                    use_container_width=True, hide_index=True)
-
-# ---------- Onglet 6 : Watchlist ----------
-with onglets[5]:
-    st.subheader("⭐ Ma watchlist")
-    st.caption("La watchlist est conservée tant que la page reste ouverte.")
-    if not st.session_state.watchlist:
-        st.info("Vide. Ajoutez des entreprises depuis l'onglet « Fiche & plan ».")
-    else:
-        w = df[df["Ticker"].isin(st.session_state.watchlist)]
-        st.dataframe(w[["Ticker", "Nom", "Perf 1m %", "Perf 6m %", "Momentum", "Risque", "Profil"]],
-                     use_container_width=True, hide_index=True)
-        if st.button("🗑️ Vider la watchlist"):
-            st.session_state.watchlist = []
-            st.rerun()
-
-# ---------- Onglet 7 : Backtest ----------
-with onglets[6]:
-    st.subheader("🧪 Backtest simplifié")
-    st.write("Test : si on avait acheté, il y a 6 mois, les entreprises qui avaient alors le meilleur élan "
-             "(mesuré sur les 6 mois précédents), auraient-elles battu le marché ?")
-    pr = charger_prix(tuple(df["Ticker"].tolist() + [ETF_MARCHE]), "2y")
-    if pr.shape[0] > 280:
-        coupe = pr.shape[0] - 126
-        avant = pr.iloc[:coupe]
-        apres = pr.iloc[coupe - 1:]
-        mom_avant = {}
-        for c in avant.columns:
-            s = avant[c].dropna()
-            if len(s) > 130 and c != ETF_MARCHE:
-                mom_avant[c] = perf(s, 126)
-        classement = pd.Series(mom_avant).sort_values(ascending=False)
-        n_top = max(5, len(classement) // 5)
-        top = classement.head(n_top).index
-        reste = classement.tail(len(classement) - n_top).index
-
-        def rend(cols):
-            vals = [(apres[c].dropna().iloc[-1] / apres[c].dropna().iloc[0] - 1) * 100
-                    for c in cols if apres[c].dropna().shape[0] > 10]
-            return np.mean(vals) if vals else np.nan
-
-        r_top, r_reste = rend(top), rend(reste)
-        r_marche = (apres[ETF_MARCHE].iloc[-1] / apres[ETF_MARCHE].iloc[0] - 1) * 100
-        m1, m2, m3 = st.columns(3)
-        m1.metric(f"Top {n_top} élan (il y a 6 mois)", f"{r_top:+.1f} %")
-        m2.metric("Les autres", f"{r_reste:+.1f} %")
-        m3.metric("Marché (S&P 500)", f"{r_marche:+.1f} %")
-        if r_top > r_marche:
-            st.success("Sur cette période, les titres à fort élan ont battu le marché. Cela ne garantit rien pour l'avenir.")
-        else:
-            st.warning("Sur cette période, les titres à fort élan n'ont PAS battu le marché. Preuve que le momentum seul ne suffit pas.")
-        st.caption("Backtest très simplifié : une seule période, pas de frais, biais possible (liste actuelle d'entreprises). À prendre comme un indice, pas une preuve.")
-    else:
-        st.info("Pas assez d'historique pour le backtest.")
-
-# ---------- Onglet 8 : Mode papier ----------
-with onglets[7]:
-    st.subheader("📓 Portefeuille fictif (mode papier)")
-    st.write("Testez vos idées avec de l'argent virtuel avant de risquer du vrai argent.")
-    if not st.session_state.papier:
-        st.info("Aucune position. Ouvrez-en depuis l'onglet « Fiche & plan ».")
-    else:
-        rows, total_in, total_now = [], 0, 0
-        pp = charger_prix(tuple({p["ticker"] for p in st.session_state.papier}), "5d")
-        for p in st.session_state.papier:
-            if p["ticker"] in pp.columns:
-                actuel = float(pp[p["ticker"]].dropna().iloc[-1])
-                val = p["montant"] * actuel / p["prix"]
-                rows.append({"Ticker": p["ticker"], "Mis (€)": p["montant"],
-                             "Valeur (€)": round(val, 2),
-                             "Variation %": round((val / p["montant"] - 1) * 100, 1)})
-                total_in += p["montant"]
-                total_now += val
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-        if total_in:
-            st.metric("Total", f"{total_now:.0f} €", f"{(total_now / total_in - 1) * 100:+.1f} %")
-        if st.button("🗑️ Réinitialiser le mode papier"):
-            st.session_state.papier = []
-            st.rerun()
-
-# ---------- Onglet 9 : Portefeuille réel (CSV) + corrélations ----------
-with onglets[8]:
-    st.subheader("💼 Mon portefeuille réel")
-    st.write("Importez un fichier CSV avec les colonnes : `ticker, quantite, prix_achat`.")
-    fichier = st.file_uploader("Fichier CSV", type="csv")
-    if fichier:
-        pf = pd.read_csv(fichier)
-        pf.columns = [c.strip().lower() for c in pf.columns]
-        if {"ticker", "quantite", "prix_achat"}.issubset(pf.columns):
-            tks = tuple(pf["ticker"].str.upper().tolist())
-            pxs = charger_prix(tks, "1y")
-            lignes, total = [], 0
-            for _, r in pf.iterrows():
-                t = str(r["ticker"]).upper()
-                if t in pxs.columns:
-                    actuel = float(pxs[t].dropna().iloc[-1])
-                    val = actuel * r["quantite"]
-                    total += val
-                    lignes.append({"Ticker": t, "Quantité": r["quantite"],
-                                   "Prix achat": r["prix_achat"], "Prix actuel": round(actuel, 2),
-                                   "Valeur": round(val, 2),
-                                   "Gain %": round((actuel / r["prix_achat"] - 1) * 100, 1)})
-            dfp = pd.DataFrame(lignes)
-            dfp["Poids %"] = (dfp["Valeur"] / total * 100).round(1)
-            st.dataframe(dfp, use_container_width=True, hide_index=True)
-            st.metric("Valeur totale", f"{total:,.0f}")
-            fig = px.pie(dfp, names="Ticker", values="Valeur", title="Répartition")
-            st.plotly_chart(fig, use_container_width=True)
-            if (dfp["Poids %"] > 25).any():
-                st.warning("⚠️ Une position dépasse 25 % du portefeuille : forte concentration.")
-            if len(tks) >= 3:
-                corr = pxs.pct_change().dropna().corr()
-                fig2 = px.imshow(corr, text_auto=".2f", color_continuous_scale="RdBu_r",
-                                 zmin=-1, zmax=1, title="Corrélations (proche de 1 = bougent ensemble)")
-                st.plotly_chart(fig2, use_container_width=True)
-                st.caption("Des valeurs proches de 1 signifient que vos actions réagissent de la même façon : peu de diversification.")
-        else:
-            st.error("Le CSV doit contenir : ticker, quantite, prix_achat.")
-# ---------- Onglet 10 : Aide ----------
-with onglets[9]:
-    st.subheader("❓ Aide")
-    st.markdown("""
-**Momentum** : le cours monte-t-il plus vite que le marché ?
-
-**Fondamentaux** : croissance, marges, rentabilité, endettement.
-
-**Risque** : plus le chiffre est haut, plus l'investissement est dangereux.
-
-**Les profils**
-- 🚀 Croissance solide : le cours monte ET l'entreprise est saine.
-- 🎲 Spéculatif : le cours monte mais les fondamentaux sont fragiles.
-- 💎 Solide mais délaissée : bonne entreprise dont le cours est en retard.
-- ⚖️ À surveiller : signaux mélangés.
-
-**Petites entreprises** : elles peuvent monter très vite mais aussi perdre
-la quasi-totalité de leur valeur. Gardez des montants faibles.
-
-**Importer un CSV** : colonnes ticker, quantite, prix_achat.
-Pour l'Europe, ajoutez le suffixe de la bourse (.PA, .DE, .AS).
-
-**Plan d'investissement** : les montants, durées et stop-loss affichés sont
-des repères pédagogiques calculés à partir de la volatilité passée.
-Ils ne constituent pas un conseil personnalisé.
-
-**Analyste IA (optionnel)** : ajoutez ANTHROPIC_API_KEY dans les Secrets
-de Streamlit pour l'activer.
-""")
-    st.warning("⚠️ Outil pédagogique : ne constitue pas un conseil en investissement. Le passé ne garantit pas l'avenir. N'investissez que de l'argent que vous pouvez vous permettre de perdre.")
-
-
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</body>
+</html>
