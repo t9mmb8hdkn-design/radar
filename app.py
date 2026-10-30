@@ -9,548 +9,772 @@ import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
-st.set_page_config(page_title="Radar Bourse 2.0", page_icon="📡", layout="wide")
+st.set_page_config(page_title="Radar Bourse 3.0", page_icon="📡", layout="wide")
 
 # =====================================================================
-# 1. LES GRANDES TENDANCES MONDIALES
+# 1. TENDANCES MONDIALES (grandes + petites entreprises)
 # =====================================================================
 TENDANCES = {
     "🤖 IA & semi-conducteurs": {
         "etf": "SMH",
-        "actions": ["NVDA", "AVGO", "AMD", "TSM", "ASML", "PLTR", "ARM"],
-        "pourquoi": "Les géants du cloud investissent des centaines de milliards dans les data centers. Puces et logiciels d'IA sont au cœur de cette vague.",
+        "actions": ["NVDA", "AVGO", "AMD", "TSM", "ASML", "PLTR", "ARM", "SOUN", "BBAI", "AI"],
+        "pourquoi": "Les géants du cloud investissent des centaines de milliards dans les data centers. Puces et logiciels d'IA sont au coeur de cette vague.",
         "risques": "Valorisations élevées, dépendance à quelques gros clients, restrictions d'export vers la Chine, risque de bulle.",
     },
     "🛡️ Cybersécurité": {
         "etf": "CIBR",
-        "actions": ["CRWD", "PANW", "ZS", "NET", "FTNT"],
+        "actions": ["CRWD", "PANW", "ZS", "NET", "FTNT", "S", "RPD"],
         "pourquoi": "Explosion des cyberattaques, tensions géopolitiques et nouvelles obligations réglementaires : la sécurité devient incontournable.",
         "risques": "Concurrence forte, valorisations élevées, une panne majeure peut nuire à la réputation.",
     },
-    "⚛️ Nucléaire & uranium": {
-        "etf": "URA",
-        "actions": ["CCJ", "CEG", "VST", "OKLO", "SMR"],
-        "pourquoi": "Les data centers d'IA ont besoin d'une électricité énorme et stable. Le nucléaire revient en grâce (soutien des États, petits réacteurs SMR).",
-        "risques": "Projets très longs, dépendance aux autorisations publiques, certaines sociétés n'ont pas encore de revenus.",
-    },
-    "⚡ Électrification & réseaux": {
-        "etf": "GRID",
-        "actions": ["ETN", "VRT", "GEV", "SU.PA", "PWR"],
-        "pourquoi": "Il faut moderniser les réseaux électriques pour les data centers, les voitures électriques et la relocalisation industrielle.",
-        "risques": "Secteur cyclique, sensible aux taux d'intérêt et aux budgets d'investissement.",
-    },
-    "🌱 Énergies renouvelables": {
+    "⚡ Énergie propre & électrification": {
         "etf": "ICLN",
-        "actions": ["FSLR", "ENPH", "NEE", "ORSTED.CO"],
-        "pourquoi": "Transition énergétique, objectifs climat, coûts du solaire en baisse.",
-        "risques": "Très dépendant des subventions et des décisions politiques, sensible aux taux.",
+        "actions": ["ENPH", "FSLR", "NEE", "PLUG", "RUN", "BE", "STEM", "SHLS"],
+        "pourquoi": "Transition énergétique, demande d'électricité tirée par l'IA et les véhicules électriques, soutien public.",
+        "risques": "Dépendance aux subventions et aux taux d'intérêt, marges fragiles, changements politiques.",
     },
-    "🎖️ Défense & souveraineté": {
+    "🚀 Défense & spatial": {
         "etf": "ITA",
-        "actions": ["RHM.DE", "HO.PA", "SAF.PA", "LMT", "RTX"],
-        "pourquoi": "Réarmement de l'Europe, hausse des budgets militaires de l'OTAN, conflits en cours.",
-        "risques": "Un accord de paix ou des coupes budgétaires peuvent faire chuter le secteur, enjeux éthiques.",
+        "actions": ["LMT", "RTX", "RKLB", "PL", "ASTS", "LUNR", "RDW", "KTOS"],
+        "pourquoi": "Hausse des budgets militaires mondiaux, tensions géopolitiques, nouvelle économie spatiale (satellites, lanceurs).",
+        "risques": "Dépendance aux budgets publics, retards de programmes, très forte volatilité sur les petites valeurs spatiales.",
     },
-    "🧬 Santé & longévité": {
-        "etf": "XLV",
-        "actions": ["LLY", "NVO", "VRTX", "ISRG"],
-        "pourquoi": "Vieillissement de la population, traitements contre l'obésité (GLP-1), chirurgie robotisée.",
-        "risques": "Pression politique sur le prix des médicaments, échecs d'essais cliniques.",
-    },
-    "🦾 Robotique & automatisation": {
-        "etf": "BOTZ",
-        "actions": ["TSLA", "ROK", "SYM", "TER", "ABBN.SW"],
-        "pourquoi": "Manque de main-d'œuvre, relocalisation des usines, robots humanoïdes et IA physique.",
-        "risques": "Promesses parfois lointaines, forte volatilité.",
-    },
-    "🚀 Spatial": {
-        "etf": "UFO",
-        "actions": ["RKLB", "ASTS", "LUNR"],
-        "pourquoi": "Baisse du coût des lancements, constellations de satellites, budgets de défense spatiale.",
-        "risques": "Entreprises souvent non rentables, très spéculatives, besoin de lever de l'argent.",
+    "🧬 Santé & biotech": {
+        "etf": "XBI",
+        "actions": ["LLY", "NVO", "VRTX", "ISRG", "REGN", "CRSP", "BEAM"],
+        "pourquoi": "Vieillissement de la population, traitements de l'obésité, thérapies géniques, IA appliquée à la découverte de médicaments.",
+        "risques": "Échecs d'essais cliniques (chute brutale), décisions réglementaires, pression sur les prix des médicaments.",
     },
     "💳 Fintech & paiements": {
-        "etf": "FINX",
-        "actions": ["HOOD", "SOFI", "NU", "ADYEN.AS", "MELI"],
-        "pourquoi": "Numérisation de la banque, nouvelles générations d'investisseurs, paiements mobiles dans les pays émergents.",
-        "risques": "Régulation, sensibilité aux cycles de crédit et à l'activité des particuliers en bourse.",
+        "etf": "ARKF",
+        "actions": ["V", "MA", "SQ", "SOFI", "AFRM", "HOOD", "NU", "COIN"],
+        "pourquoi": "Digitalisation des paiements, banque en ligne, crypto-actifs et services financiers accessibles.",
+        "risques": "Régulation, sensibilité aux taux d'intérêt, risque de crédit, volatilité de la crypto.",
+    },
+    "☁️ Cloud & logiciels": {
+        "etf": "WCLD",
+        "actions": ["MSFT", "SNOW", "DDOG", "MDB", "NOW", "TEAM", "GTLB"],
+        "pourquoi": "Migration des entreprises vers le cloud et intégration de l'IA dans les logiciels professionnels.",
+        "risques": "Concurrence des géants, ralentissement des budgets IT, valorisations tendues.",
+    },
+    "⚛️ Quantique & technologies émergentes": {
+        "etf": "QTUM",
+        "actions": ["IONQ", "RGTI", "QBTS", "QUBT", "LUNR"],
+        "pourquoi": "Course mondiale à l'informatique quantique, financements publics et privés en forte hausse.",
+        "risques": "Technologie encore très jeune, peu de revenus, dilution du capital, risque de perte totale.",
     },
 }
 
-MOTS_CLES = {
-    "🏛️ Taux / banques centrales": ["fed", "bce", "taux", "powell", "lagarde", "inflation"],
-    "🚢 Douane / commerce": ["douane", "douanes", "tarif", "tarifs", "tariff", "tariffs", "export", "exportations"],
-    "💶 Subventions / plans publics": ["subvention", "subventions", "chips act", "plan", "aide publique", "budget"],
-    "⚔️ Géopolitique / défense": ["guerre", "otan", "nato", "ukraine", "chine", "taïwan", "sanction", "sanctions", "défense"],
-    "⚖️ Régulation / justice": ["régulation", "antitrust", "amende", "enquête", "sec", "bruxelles", "procès"],
-    "📊 Résultats / contrats": ["résultats", "chiffre d'affaires", "bénéfice", "contrat", "commande", "prévisions", "earnings"],
+ETF_MARCHE = "SPY"
+
+# Univers de scan pour les petites entreprises (liste de départ)
+UNIVERS_SMALL = [
+    "SOUN", "BBAI", "RGTI", "QBTS", "QUBT", "IONQ", "RKLB", "ASTS", "LUNR", "PL",
+    "SOFI", "HOOD", "AFRM", "PLUG", "RUN", "BE", "STEM", "SHLS", "RPD", "S",
+    "CRSP", "BEAM", "GTLB", "RDW", "KTOS",
+]
+
+DESCRIPTIONS_PROFILS = {
+    "🚀 Croissance solide": "Le cours monte ET l'entreprise est saine. Le profil le plus intéressant, mais pas sans risque.",
+    "🎲 Spéculatif": "Le cours monte fort mais les fondamentaux sont fragiles. Gros potentiel, gros risque de chute.",
+    "💎 Solide mais délaissée": "Bonne entreprise dont le cours n'a pas encore suivi. À surveiller.",
+    "⚖️ À surveiller": "Signaux mélangés, pas de conviction claire.",
 }
 
-BENCH = "^GSPC"  # S&P 500
-
 # =====================================================================
-# 2. CHARGEMENT DES DONNÉES
+# 2. DONNÉES
 # =====================================================================
 @st.cache_data(ttl=3600, show_spinner=False)
-def charger_prix(tickers):
-    data = yf.download(list(tickers), period="1y", auto_adjust=True,
-                       progress=False, threads=True)
-    close, volume = data["Close"], data["Volume"]
-    if isinstance(close, pd.Series):
-        close, volume = close.to_frame(tickers[0]), volume.to_frame(tickers[0])
-    return close.ffill(), volume
+def charger_prix(tickers, periode="1y"):
+    if not tickers:
+        return pd.DataFrame()
+    try:
+        data = yf.download(list(tickers), period=periode, auto_adjust=True,
+                           progress=False, group_by="column", threads=True)
+        if data.empty:
+            return pd.DataFrame()
+        close = data["Close"] if "Close" in data else data
+        if isinstance(close, pd.Series):
+            close = close.to_frame(name=list(tickers)[0])
+        return close.dropna(how="all")
+    except Exception:
+        return pd.DataFrame()
 
 
-@st.cache_data(ttl=6 * 3600, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def charger_infos(ticker):
     try:
-        return yf.Ticker(ticker).info or {}
+        info = yf.Ticker(ticker).info
+        return info if isinstance(info, dict) else {}
     except Exception:
         return {}
 
 
-def etiqueter(texte):
-    texte = texte.lower()
-    return [cat for cat, mots in MOTS_CLES.items()
-            if any(re.search(r"\b" + re.escape(m) + r"\b", texte) for m in mots)]
-
-
 @st.cache_data(ttl=1800, show_spinner=False)
-def actualites(requete, n=8):
-    url = f"https://news.google.com/rss/search?q={quote(requete)}&hl=fr&gl=FR&ceid=FR:fr"
-    flux = feedparser.parse(url)
-    return [
-        {"titre": e.title, "lien": e.link,
-         "date": e.get("published", "")[:16], "tags": etiqueter(e.title)}
-        for e in flux.entries[:n]
-    ]
+def charger_actus(ticker):
+    try:
+        url = f"https://news.google.com/rss/search?q={quote(ticker + ' stock')}&hl=fr&gl=FR&ceid=FR:fr"
+        flux = feedparser.parse(url)
+        return [{"titre": e.get("title", ""), "lien": e.get("link", ""),
+                 "date": e.get("published", "")} for e in flux.entries[:6]]
+    except Exception:
+        return []
 
 # =====================================================================
-# 3. INDICATEURS ET SCORES
+# 3. CALCULS DE PERFORMANCE ET DE RISQUE
 # =====================================================================
-def indicateurs(close, volume, bench, etf):
-    c = close.dropna()
-    if len(c) < 130:
-        return None
-    r = c.pct_change().dropna()
-
-    def perf(s, n):
-        s = s.dropna()
-        return s.iloc[-1] / s.iloc[-n - 1] - 1 if len(s) > n else np.nan
-
-    delta = c.diff()
-    gain = delta.clip(lower=0).rolling(14).mean().iloc[-1]
-    perte = (-delta.clip(upper=0)).rolling(14).mean().iloc[-1]
-    rsi = 100 - 100 / (1 + gain / perte) if perte > 0 else 100
-
-    v = volume.dropna()
-    base = v.iloc[-120:-20].mean() if len(v) > 120 else np.nan
-    vol_ratio = v.iloc[-20:].mean() / base if base and base > 0 else np.nan
-
-    corr = r.iloc[-126:].corr(etf.pct_change().iloc[-126:])
-
-    return {
-        "prix": c.iloc[-1],
-        "perf_1m": perf(c, 21), "perf_3m": perf(c, 63), "perf_6m": perf(c, 126),
-        "perf_1a": c.iloc[-1] / c.iloc[0] - 1,
-        "ma50": c.rolling(50).mean().iloc[-1],
-        "ma200": c.rolling(min(200, len(c))).mean().iloc[-1],
-        "rsi": rsi,
-        "volatilite": r.std() * np.sqrt(252),
-        "dist_haut": c.iloc[-1] / c.max() - 1,
-        "vol_ratio": vol_ratio,
-        "force_rel": perf(c, 126) - perf(bench, 126),
-        "perf_theme": perf(etf, 126),
-        "corr_theme": corr,
-    }
+def perf(serie, jours):
+    s = serie.dropna()
+    if len(s) < 2:
+        return np.nan
+    n = min(jours, len(s) - 1)
+    return (s.iloc[-1] / s.iloc[-1 - n] - 1) * 100
 
 
-def borne(x):
-    return float(np.clip(x, 0, 100))
+def volatilite_annuelle(serie):
+    r = serie.dropna().pct_change().dropna()
+    if len(r) < 20:
+        return np.nan
+    return r.std() * np.sqrt(252) * 100
 
 
-def score_momentum(i):
-    s = 50 + i["perf_6m"] * 60 + i["force_rel"] * 40
-    s += 10 if i["prix"] > i["ma200"] else -10
-    s += 5 if i["ma50"] > i["ma200"] else -5
-    return borne(s)
+def drawdown_max(serie):
+    s = serie.dropna()
+    if len(s) < 2:
+        return np.nan
+    sommet = s.cummax()
+    return ((s / sommet - 1).min()) * 100
 
 
-def score_fondamentaux(f):
-    if not f or f.get("revenueGrowth") is None:
-        return 50.0
-    s = 40
-    rg = f.get("revenueGrowth") or 0
-    eg = f.get("earningsGrowth")
-    gm, pm = f.get("grossMargins"), f.get("profitMargins")
-    dte, fpe = f.get("debtToEquity"), f.get("forwardPE")
-    s += 25 if rg > 0.3 else 15 if rg > 0.15 else 5 if rg > 0.05 else -15 if rg < 0 else 0
-    if eg is not None:
-        s += 10 if eg > 0.25 else -10 if eg < 0 else 0
-    if gm is not None and gm > 0.5:
-        s += 10
-    if pm is not None:
-        s += 10 if pm > 0.15 else -15 if pm < 0 else 0
-    if dte is not None and dte > 200:
-        s -= 10
-    if fpe is not None:
-        s += 5 if 0 < fpe < 30 else -10 if fpe > 80 else 0
-    return borne(s)
+def hausse_parabolique(serie):
+    s = serie.dropna()
+    if len(s) < 60:
+        return False
+    return perf(s, 60) > 80
 
 
-def score_tendance(i):
-    corr = 0 if np.isnan(i["corr_theme"]) else i["corr_theme"]
-    pt = 0 if np.isnan(i["perf_theme"]) else i["perf_theme"]
-    return borne(50 + corr * 30 + pt * 60)
+def classer_capitalisation(cap):
+    if cap is None or pd.isna(cap) or cap == 0:
+        return "Inconnue"
+    if cap < 300e6:
+        return "Micro-cap"
+    if cap < 2e9:
+        return "Petite cap"
+    if cap < 10e9:
+        return "Moyenne cap"
+    return "Grande cap"
+
+# =====================================================================
+# 4. SCORES
+# =====================================================================
+def score_momentum(p1m, p3m, p6m, p12m, p6m_marche):
+    pts = 0.0
+    for p in (p3m, p6m):
+        if pd.notna(p):
+            pts += min(max(p, -20), 80) / 80 * 35
+    if pd.notna(p6m) and pd.notna(p6m_marche):
+        rel = p6m - p6m_marche
+        pts += min(max(rel, -20), 60) / 60 * 20
+    if pd.notna(p1m) and p1m > 0:
+        pts += 5
+    if pd.notna(p12m) and p12m > 0:
+        pts += 5
+    return round(min(max(pts, 0), 100), 1)
 
 
-def score_risque(i, f):
-    s = 30 + (i["volatilite"] - 0.3) * 80
-    s += 15 if i["rsi"] > 75 else 0
-    s += 10 if i["dist_haut"] < -0.30 else 0
-    if f:
-        pm = f.get("profitMargins")
-        if pm is not None and pm < 0:
-            s += 15
-        fpe = f.get("forwardPE")
-        if fpe is not None and fpe > 80:
-            s += 10
-    return borne(s)
+def score_fondamentaux(info):
+    pts, poids = 0.0, 0.0
+
+    def ajoute(valeur, bas, haut, poids_c):
+        nonlocal pts, poids
+        if valeur is None or pd.isna(valeur):
+            return
+        pts += min(max((valeur - bas) / (haut - bas), 0), 1) * poids_c
+        poids += poids_c
+
+    ajoute(info.get("revenueGrowth"), 0.0, 0.40, 30)
+    ajoute(info.get("earningsGrowth"), 0.0, 0.50, 15)
+    ajoute(info.get("grossMargins"), 0.20, 0.70, 15)
+    ajoute(info.get("operatingMargins"), 0.0, 0.30, 15)
+    ajoute(info.get("returnOnEquity"), 0.0, 0.30, 10)
+    dette = info.get("debtToEquity")
+    if dette is not None and not pd.isna(dette):
+        pts += (1 - min(max(dette, 0), 300) / 300) * 15
+        poids += 15
+    if poids == 0:
+        return np.nan
+    return round(pts / poids * 100, 1)
+
+
+def score_risque(vol, drawdown, cap_classe, parabolique, fond):
+    pts = 0.0
+    if pd.notna(vol):
+        pts += min(vol, 100) / 100 * 40
+    else:
+        pts += 20
+    if pd.notna(drawdown):
+        pts += min(abs(drawdown), 60) / 60 * 25
+    else:
+        pts += 12
+    pts += {"Grande cap": 0, "Moyenne cap": 5, "Petite cap": 12,
+            "Micro-cap": 20, "Inconnue": 10}.get(cap_classe, 10)
+    if parabolique:
+        pts += 10
+    if pd.notna(fond) and fond < 35:
+        pts += 5
+    return round(min(pts, 100), 1)
 
 
 def profil(mom, fond, risque):
-    if mom >= 60 and fond >= 60 and risque < 65:
+    if pd.isna(fond):
+        return "🎲 Spéculatif" if mom >= 55 else "⚖️ À surveiller"
+    if mom >= 55 and fond >= 55 and risque < 70:
         return "🚀 Croissance solide"
-    if mom >= 60 and (fond < 50 or risque >= 65):
+    if mom >= 55 and fond < 40:
         return "🎲 Spéculatif"
-    if mom < 50 and fond >= 60:
+    if mom < 45 and fond >= 60:
         return "💎 Solide mais délaissée"
     return "⚖️ À surveiller"
 
+
+def badges(cap_classe, volume_moyen, parabolique, vol):
+    b = []
+    if cap_classe in ("Micro-cap", "Petite cap"):
+        b.append(f"⚠️ {cap_classe}")
+    if volume_moyen is not None and volume_moyen < 300_000:
+        b.append("💧 Faible liquidité")
+    if parabolique:
+        b.append("📈 Hausse parabolique")
+    if pd.notna(vol) and vol > 70:
+        b.append("🌪️ Très volatile")
+    return b
+
 # =====================================================================
-# 4. EXPLICATIONS EN FRANÇAIS
+# 5. ANALYSE COMPLÈTE D'UN TICKER
 # =====================================================================
-def pct(x):
-    return "n/a" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x * 100:+.0f} %"
+def analyser_ticker(ticker, serie, serie_marche, tendance=None):
+    info = charger_infos(ticker)
+    p1m, p3m, p6m = perf(serie, 21), perf(serie, 63), perf(serie, 126)
+    p12m = perf(serie, 252)
+    p6m_marche = perf(serie_marche, 126) if serie_marche is not None else np.nan
+    vol = volatilite_annuelle(serie)
+    dd = drawdown_max(serie)
+    cap = info.get("marketCap")
+    cap_classe = classer_capitalisation(cap)
+    parab = hausse_parabolique(serie)
+    mom = score_momentum(p1m, p3m, p6m, p12m, p6m_marche)
+    fond = score_fondamentaux(info)
+    risque = score_risque(vol, dd, cap_classe, parab, fond)
+    prof = profil(mom, fond, risque)
+    return {
+        "Ticker": ticker,
+        "Nom": info.get("shortName", ticker),
+        "Secteur": info.get("sector", "n/a"),
+        "Tendance": tendance or "Recherche libre",
+        "Capitalisation": cap_classe,
+        "Cap ($)": cap,
+        "Perf 1m %": round(p1m, 1) if pd.notna(p1m) else np.nan,
+        "Perf 3m %": round(p3m, 1) if pd.notna(p3m) else np.nan,
+        "Perf 6m %": round(p6m, 1) if pd.notna(p6m) else np.nan,
+        "Perf 12m %": round(p12m, 1) if pd.notna(p12m) else np.nan,
+        "Volatilité %": round(vol, 1) if pd.notna(vol) else np.nan,
+        "Drawdown max %": round(dd, 1) if pd.notna(dd) else np.nan,
+        "Momentum": mom,
+        "Fondamentaux": fond,
+        "Risque": risque,
+        "Profil": prof,
+        "Badges": " ".join(badges(cap_classe, info.get("averageVolume"), parab, vol)),
+        "Croiss. CA %": round(info["revenueGrowth"] * 100, 1) if info.get("revenueGrowth") is not None else np.nan,
+        "Marge op. %": round(info["operatingMargins"] * 100, 1) if info.get("operatingMargins") is not None else np.nan,
+        "Dette/Fonds propres": info.get("debtToEquity", np.nan),
+        "PER prévisionnel": info.get("forwardPE", np.nan),
+        "Description": info.get("longBusinessSummary", ""),
+    }
+
+# =====================================================================
+# 6. PLAN D'INVESTISSEMENT (taille, durée, scénarios, stop-loss)
+# =====================================================================
+def plan_investissement(ligne, serie, capital):
+    risque = ligne["Risque"]
+    vol = ligne["Volatilité %"]
+    dd = ligne["Drawdown max %"]
+
+    if risque < 35:
+        pct_max, label = 8, "Risque modéré"
+    elif risque < 50:
+        pct_max, label = 5, "Risque moyen"
+    elif risque < 65:
+        pct_max, label = 3, "Risque élevé"
+    elif risque < 80:
+        pct_max, label = 2, "Risque très élevé"
+    else:
+        pct_max, label = 1, "Risque extrême"
+
+    if ligne["Profil"] == "🚀 Croissance solide":
+        horizon = "Moyen à long terme (1 à 3 ans)"
+        raison = "Les fondamentaux soutiennent la hausse : mieux vaut laisser le temps jouer."
+    elif ligne["Profil"] == "🎲 Spéculatif":
+        horizon = "Court terme (3 à 6 mois), avec suivi serré"
+        raison = "La hausse repose surtout sur l'élan du marché : il faut surveiller et être prêt à sortir."
+    elif ligne["Profil"] == "💎 Solide mais délaissée":
+        horizon = "Long terme (2 à 5 ans)"
+        raison = "Entreprise saine dont le cours peut rattraper son retard, mais cela peut prendre du temps."
+    else:
+        horizon = "Observation d'abord, pas d'urgence"
+        raison = "Pas de signal clair : attendre une meilleure configuration."
+
+    vol_eff = vol if pd.notna(vol) else 50
+    stop_pct = min(max(vol_eff * 0.4, 8), 35)
+
+    montant_max = capital * pct_max / 100
+    perte_stop = montant_max * stop_pct / 100
+
+    # Scénarios sur 12 mois, fondés sur la volatilité historique
+    sigma = vol_eff / 100
+    scenarios = {
+        "Pessimiste (défavorable)": -1.0 * sigma,
+        "Central (neutre)": 0.0,
+        "Optimiste (favorable)": 1.0 * sigma,
+    }
+    return {
+        "pct_max": pct_max, "label_risque": label, "horizon": horizon,
+        "raison_horizon": raison, "stop_pct": round(stop_pct, 1),
+        "montant_max": round(montant_max, 2), "perte_stop": round(perte_stop, 2),
+        "scenarios": scenarios, "sigma": sigma,
+        "pire_cas": dd,
+    }
 
 
-def explications(nom_theme, i, f):
-    pourquoi, vigilance, correl = [], [], []
-
-    pourquoi.append(f"Le cours a progressé de {pct(i['perf_6m'])} en 6 mois "
-                    f"(et {pct(i['perf_1a'])} sur 1 an).")
-    if i["force_rel"] > 0.1:
-        pourquoi.append(f"Elle fait mieux que le marché américain de {pct(i['force_rel'])} sur 6 mois.")
-    if i["prix"] > i["ma50"] > i["ma200"]:
-        pourquoi.append("La tendance est haussière et installée (cours au-dessus de ses moyennes 50 et 200 jours).")
-    if i["vol_ratio"] and not np.isnan(i["vol_ratio"]) and i["vol_ratio"] > 1.3:
-        pourquoi.append(f"Les volumes d'échange sont {i['vol_ratio']:.1f}x plus élevés que d'habitude : l'intérêt des investisseurs augmente.")
-    if f:
-        rg, gm, pm = f.get("revenueGrowth"), f.get("grossMargins"), f.get("profitMargins")
-        if rg is not None and rg > 0.15:
-            pourquoi.append(f"Le chiffre d'affaires croît de {pct(rg)} : la hausse est soutenue par une vraie activité.")
-        if gm is not None and gm > 0.5:
-            pourquoi.append(f"Marge brute élevée ({gm * 100:.0f} %), signe d'un produit à forte valeur.")
-        if pm is not None and pm > 0.15:
-            pourquoi.append(f"L'entreprise est rentable (marge nette {pm * 100:.0f} %).")
-
-    if i["rsi"] > 70:
-        vigilance.append(f"RSI à {i['rsi']:.0f} : le titre est en zone de surchauffe, risque de repli à court terme.")
-    if i["dist_haut"] < -0.25:
-        vigilance.append(f"Le cours est {abs(i['dist_haut']) * 100:.0f} % sous son plus haut annuel.")
-    if i["volatilite"] > 0.6:
-        vigilance.append(f"Volatilité très élevée ({i['volatilite'] * 100:.0f} % annualisée) : de fortes variations sont normales.")
-    if f:
-        if (f.get("profitMargins") or 0) < 0:
-            vigilance.append("L'entreprise ne gagne pas encore d'argent : la hausse repose sur des promesses.")
-        if (f.get("forwardPE") or 0) > 80:
-            vigilance.append("Valorisation très élevée par rapport aux bénéfices attendus.")
-        if (f.get("debtToEquity") or 0) > 200:
-            vigilance.append("Endettement important.")
-    vigilance.append(f"Risques de la thématique : {TENDANCES[nom_theme]['risques']}")
-
-    c = i["corr_theme"]
-    if not np.isnan(c):
-        if c > 0.7:
-            correl.append(f"Forte corrélation avec sa thématique ({c:.2f}) : elle monte surtout parce que tout le secteur monte.")
-        elif c < 0.4:
-            correl.append(f"Faible corrélation avec sa thématique ({c:.2f}) : sa hausse vient surtout de facteurs propres à l'entreprise.")
+def explication(ligne, tendance_info):
+    t = []
+    mom, fond, risque = ligne["Momentum"], ligne["Fondamentaux"], ligne["Risque"]
+    if mom >= 65:
+        t.append(f"📈 **Élan fort** : {ligne['Perf 6m %']} % sur 6 mois, le marché récompense clairement ce titre.")
+    elif mom >= 45:
+        t.append(f"📊 **Élan correct** : {ligne['Perf 6m %']} % sur 6 mois, sans excès.")
+    else:
+        t.append(f"📉 **Élan faible** : {ligne['Perf 6m %']} % sur 6 mois, le marché n'est pas convaincu.")
+    if pd.notna(fond):
+        if fond >= 65:
+            t.append("🏗️ **Fondamentaux solides** : croissance, marges et endettement sont globalement sains.")
+        elif fond >= 40:
+            t.append("🏗️ **Fondamentaux moyens** : certains indicateurs sont bons, d'autres fragiles.")
         else:
-            correl.append(f"Corrélation modérée avec sa thématique ({c:.2f}).")
-    if not np.isnan(i["perf_theme"]):
-        correl.append(f"Le secteur dans son ensemble fait {pct(i['perf_theme'])} sur 6 mois.")
-    correl.append(f"Moteur de la thématique : {TENDANCES[nom_theme]['pourquoi']}")
-
-    return pourquoi, vigilance, correl
-
+            t.append("🏗️ **Fondamentaux faibles** : l'entreprise est peu rentable ou très endettée. La hausse est surtout de la spéculation.")
+    else:
+        t.append("🏗️ **Fondamentaux indisponibles** : données financières insuffisantes, prudence.")
+    if tendance_info:
+        t.append(f"🌍 **Contexte** : {tendance_info['pourquoi']}")
+    if risque >= 65:
+        t.append("🔥 **Risque élevé** : forte volatilité et/ou petite taille. Une perte importante est possible.")
+    if "Hausse parabolique" in ligne["Badges"]:
+        t.append("⚠️ **Hausse parabolique** : le titre a explosé en peu de temps. Historiquement, ces hausses se retournent souvent brutalement.")
+    if tendance_info:
+        t.append(f"⚠️ **Risques de la tendance** : {tendance_info['risques']}")
+    return t
 # =====================================================================
-# 5. ANALYSE D'UNE THÉMATIQUE
+# 7. ÉTAT DE LA SESSION (watchlist, portefeuille fictif)
 # =====================================================================
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = []
+if "papier" not in st.session_state:
+    st.session_state.papier = []
+
+
+def tendance_de(ticker):
+    for nom, t in TENDANCES.items():
+        if ticker in t["actions"]:
+            return nom
+    return None
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
-def analyser_theme(nom_theme):
-    th = TENDANCES[nom_theme]
-    tickers = tuple(th["actions"]) + (th["etf"], BENCH)
-    close, volume = charger_prix(tickers)
-    if th["etf"] not in close or BENCH not in close:
-        return pd.DataFrame(), {}
-    lignes, details = [], {}
-    for t in th["actions"]:
-        if t not in close:
-            continue
-        i = indicateurs(close[t], volume[t], close[BENCH], close[th["etf"]])
-        if i is None:
-            continue
-        f = charger_infos(t)
-        mom, fond = score_momentum(i), score_fondamentaux(f)
-        tend, risq = score_tendance(i), score_risque(i, f)
-        lignes.append({
-            "Ticker": t, "Nom": f.get("shortName", t), "Profil": profil(mom, fond, risq),
-            "Momentum": round(mom), "Fondamentaux": round(fond),
-            "Tendance": round(tend), "Risque": round(risq),
-            "Perf 6m": i["perf_6m"], "Perf 1a": i["perf_1a"],
-        })
-        details[t] = {"i": i, "f": f, "serie": close[t].dropna()}
-    return pd.DataFrame(lignes), details
+def analyser_liste(tickers_tuple, tendances_tuple):
+    tickers = list(tickers_tuple)
+    prix = charger_prix(tuple(tickers + [ETF_MARCHE]), "1y")
+    if prix.empty:
+        return pd.DataFrame(), prix
+    marche = prix[ETF_MARCHE] if ETF_MARCHE in prix else None
+    lignes = []
+    for tk, tend in zip(tickers, tendances_tuple):
+        if tk in prix.columns and prix[tk].dropna().shape[0] > 30:
+            lignes.append(analyser_ticker(tk, prix[tk], marche, tend))
+    return pd.DataFrame(lignes), prix
+
 
 # =====================================================================
-# 6. INTERFACE
+# 8. BARRE LATÉRALE (filtres)
 # =====================================================================
-st.title("📡 Radar Bourse 2.0")
-st.caption("Outil d'aide à la décision, pas un conseil en investissement. "
-           "Les performances passées ne garantissent pas les performances futures.")
+st.title("📡 Radar Bourse 3.0")
+st.caption("Détection des entreprises en forte progression, analyse expliquée et plan d'investissement. Outil pédagogique : ce n'est pas un conseil en investissement.")
 
-onglets = st.tabs(["🌍 Tendances mondiales", "🔎 Analyse détaillée",
-                   "💼 Mon portefeuille", "ℹ️ Aide"])
+with st.sidebar:
+    st.header("🎛️ Paramètres")
+    capital = st.number_input("💶 Votre capital total (€)", min_value=100, value=5000, step=100)
+    st.subheader("Filtres")
+    tendances_choisies = st.multiselect("Tendances", list(TENDANCES.keys()),
+                                        default=list(TENDANCES.keys()))
+    inclure_small = st.checkbox("Inclure le scanner de petites entreprises", value=True)
+    caps_ok = st.multiselect("Tailles d'entreprise",
+                             ["Grande cap", "Moyenne cap", "Petite cap", "Micro-cap", "Inconnue"],
+                             default=["Grande cap", "Moyenne cap", "Petite cap", "Micro-cap", "Inconnue"])
+    mom_min = st.slider("Momentum minimum", 0, 100, 0)
+    risque_max = st.slider("Risque maximum", 0, 100, 100)
+    profils_ok = st.multiselect("Profils", list(DESCRIPTIONS_PROFILS.keys()),
+                                default=list(DESCRIPTIONS_PROFILS.keys()))
 
-# ---------------------------------------------------------------- ONGLET 1
+# Construction de l'univers
+tickers, tends = [], []
+for nom in tendances_choisies:
+    for tk in TENDANCES[nom]["actions"]:
+        if tk not in tickers:
+            tickers.append(tk)
+            tends.append(nom)
+if inclure_small:
+    for tk in UNIVERS_SMALL:
+        if tk not in tickers:
+            tickers.append(tk)
+            tends.append(tendance_de(tk) or "Scanner petites caps")
+
+with st.spinner("Analyse du marché en cours (30 à 60 secondes la première fois)..."):
+    df, prix = analyser_liste(tuple(tickers), tuple(tends))
+
+if df.empty:
+    st.error("Impossible de charger les données pour le moment. Réessayez dans quelques minutes.")
+    st.stop()
+
+df_f = df[
+    df["Capitalisation"].isin(caps_ok)
+    & (df["Momentum"] >= mom_min)
+    & (df["Risque"] <= risque_max)
+    & df["Profil"].isin(profils_ok)
+].copy()
+
+# =====================================================================
+# 9. ONGLETS
+# =====================================================================
+onglets = st.tabs([
+    "🏆 Classement", "🔍 Recherche libre", "📋 Fiche & plan", "⚖️ Comparateur",
+    "🌍 Tendances", "⭐ Watchlist", "🧪 Backtest", "📓 Mode papier",
+    "💼 Mon portefeuille", "❓ Aide",
+])
+
+# ---------- Onglet 1 : Classement ----------
 with onglets[0]:
-    st.subheader("Quelles thématiques portent le marché ?")
-    with st.spinner("Calcul des tendances..."):
-        resume = []
-        for nom, th in TENDANCES.items():
-            try:
-                cl, _ = charger_prix((th["etf"], BENCH))
-                if th["etf"] not in cl or len(cl[th["etf"]].dropna()) < 130:
-                    continue
-                s = cl[th["etf"]].dropna()
-                b = cl[BENCH].dropna()
-                resume.append({
-                    "Tendance": nom,
-                    "Perf 6 mois": s.iloc[-1] / s.iloc[-127] - 1,
-                    "Perf 1 an": s.iloc[-1] / s.iloc[0] - 1,
-                    "vs S&P 500 (6m)": (s.iloc[-1] / s.iloc[-127] - 1) - (b.iloc[-1] / b.iloc[-127] - 1),
-                })
-            except Exception:
-                continue
-    if resume:
-        df_res = pd.DataFrame(resume).sort_values("Perf 6 mois", ascending=False)
-        fig = px.bar(df_res, x="Perf 6 mois", y="Tendance", orientation="h",
-                     color="Perf 6 mois", color_continuous_scale="RdYlGn")
-        fig.update_layout(yaxis={"categoryorder": "total ascending"}, height=420)
-        fig.update_xaxes(tickformat=".0%")
+    st.subheader("🏆 Classement des entreprises")
+    st.write(f"**{len(df_f)}** entreprises correspondent à vos filtres (sur {len(df)} analysées).")
+    if df_f.empty:
+        st.info("Aucune entreprise ne correspond. Assouplissez les filtres à gauche.")
+    else:
+        tri = st.selectbox("Trier par", ["Momentum", "Fondamentaux", "Perf 6m %", "Perf 3m %", "Risque"])
+        df_aff = df_f.sort_values(tri, ascending=(tri == "Risque"))
+        cols = ["Ticker", "Nom", "Tendance", "Capitalisation", "Perf 3m %", "Perf 6m %",
+                "Perf 12m %", "Momentum", "Fondamentaux", "Risque", "Profil", "Badges"]
+        st.dataframe(df_aff[cols], use_container_width=True, hide_index=True, height=450)
+
+        fig = px.scatter(
+            df_aff, x="Risque", y="Perf 6m %", size="Momentum", color="Profil",
+            hover_name="Nom", text="Ticker",
+            title="Rendement sur 6 mois selon le risque (haut-gauche = idéal)",
+        )
+        fig.update_traces(textposition="top center")
         st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(df_res.style.format({"Perf 6 mois": "{:+.1%}", "Perf 1 an": "{:+.1%}",
-                                          "vs S&P 500 (6m)": "{:+.1%}"}),
+        st.caption("Plus un point est en haut à gauche, meilleur est le rapport rendement/risque. Les grosses bulles ont un fort momentum.")
+
+# ---------- Onglet 2 : Recherche libre ----------
+with onglets[1]:
+    st.subheader("🔍 Analyser n'importe quelle entreprise")
+    st.write("Entrez un ou plusieurs tickers séparés par des virgules. Pour l'Europe, ajoutez le suffixe : `.PA` (Paris), `.DE` (Allemagne), `.AS` (Amsterdam).")
+    saisie = st.text_input("Tickers", placeholder="Ex : RKLB, SOUN, MC.PA, ASML.AS")
+    if saisie:
+        liste = [x.strip().upper() for x in saisie.split(",") if x.strip()]
+        res, _ = analyser_liste(tuple(liste), tuple([tendance_de(x) or "Recherche libre" for x in liste]))
+        if res.empty:
+            st.warning("Aucune donnée trouvée. Vérifiez l'orthographe du ticker.")
+        else:
+            st.dataframe(res[["Ticker", "Nom", "Capitalisation", "Perf 6m %", "Perf 12m %",
+                              "Momentum", "Fondamentaux", "Risque", "Profil", "Badges"]],
+                         use_container_width=True, hide_index=True)
+            st.info("Pour le plan d'investissement détaillé, allez dans l'onglet « Fiche & plan » : ces tickers y seront disponibles après analyse.")
+            st.session_state["recherche"] = res
+
+# ---------- Onglet 3 : Fiche & plan ----------
+with onglets[2]:
+    st.subheader("📋 Fiche détaillée et plan d'investissement")
+    base = pd.concat([df, st.session_state.get("recherche", pd.DataFrame())]).drop_duplicates("Ticker")
+    choix = st.selectbox("Choisissez une entreprise", base["Ticker"] + " - " + base["Nom"].astype(str))
+    tk = choix.split(" - ")[0]
+    ligne = base[base["Ticker"] == tk].iloc[0]
+    serie = charger_prix((tk,), "1y")[tk].dropna()
+    marche = charger_prix((ETF_MARCHE,), "1y")[ETF_MARCHE].dropna()
+
+    st.markdown(f"### {ligne['Nom']} ({tk}) {ligne['Profil']}")
+    if ligne["Badges"]:
+        st.warning(ligne["Badges"])
+    st.caption(DESCRIPTIONS_PROFILS.get(ligne["Profil"], ""))
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Momentum", f"{ligne['Momentum']}/100")
+    c2.metric("Fondamentaux", f"{ligne['Fondamentaux']}/100" if pd.notna(ligne["Fondamentaux"]) else "n/a")
+    c3.metric("Risque", f"{ligne['Risque']}/100")
+    c4.metric("Perf 6 mois", f"{ligne['Perf 6m %']} %")
+
+    # Graphique prix vs marché
+    n = min(len(serie), len(marche))
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=serie.index, y=serie / serie.iloc[0] * 100, name=tk))
+    fig.add_trace(go.Scatter(x=marche.index, y=marche / marche.iloc[0] * 100,
+                             name="Marché (S&P 500)", line=dict(dash="dot")))
+    fig.update_layout(title="Évolution comparée (base 100 il y a 1 an)", height=380)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("#### 🧠 Pourquoi ce résultat ?")
+    tinfo = TENDANCES.get(ligne["Tendance"])
+    for phrase in explication(ligne, tinfo):
+        st.markdown(f"- {phrase}")
+
+    # Plan d'investissement
+    st.markdown("#### 💰 Plan d'investissement (repère pédagogique)")
+    plan = plan_investissement(ligne, serie, capital)
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Niveau de risque", plan["label_risque"])
+    p2.metric("Part max suggérée", f"{plan['pct_max']} % du capital")
+    p3.metric("Montant max", f"{plan['montant_max']} €")
+    st.markdown(f"**⏱️ Horizon :** {plan['horizon']}  \n_{plan['raison_horizon']}_")
+    st.markdown(f"**🛑 Stop-loss indicatif :** environ **-{plan['stop_pct']} %** depuis votre prix d'achat. "
+                f"Sur {plan['montant_max']} €, cela limiterait la perte à environ **{plan['perte_stop']} €**.")
+    if pd.notna(plan["pire_cas"]):
+        pire = plan["montant_max"] * (1 + plan["pire_cas"] / 100)
+        st.markdown(f"**📉 Pire moment de l'année écoulée :** {plan['pire_cas']} %. "
+                    f"Sur {plan['montant_max']} €, votre position serait tombée à environ **{round(pire, 2)} €**.")
+
+    st.markdown("**🔮 Scénarios à 12 mois (basés sur la volatilité passée, pas une prévision) :**")
+    lignes_sc = []
+    for nom, mult in plan["scenarios"].items():
+        gain = plan["montant_max"] * mult
+        lignes_sc.append({"Scénario": nom, "Variation": f"{mult * 100:+.0f} %",
+                          "Sur le montant max": f"{gain:+.0f} €"})
+    st.table(pd.DataFrame(lignes_sc))
+    st.caption("Ces scénarios illustrent l'amplitude possible des mouvements. Ils ne sont pas des prévisions et le passé ne garantit pas l'avenir.")
+
+    # Simulateur "et si"
+    st.markdown("#### 🎮 Simulateur « Et si j'avais investi ? »")
+    mise = st.slider("Montant investi (€)", 100, 10000, 1000, 100)
+    mois = st.select_slider("Il y a combien de mois ?", options=[1, 3, 6, 9, 12], value=6)
+    jours = {1: 21, 3: 63, 6: 126, 9: 189, 12: 251}[mois]
+    jours = min(jours, len(serie) - 1)
+    valeur = mise * serie.iloc[-1] / serie.iloc[-1 - jours]
+    st.success(f"Vos {mise} € seraient aujourd'hui à environ **{valeur:.0f} €** ({valeur - mise:+.0f} €).")
+
+    # Actualités
+    st.markdown("#### 📰 Actualités récentes")
+    for a in charger_actus(tk):
+        st.markdown(f"- [{a['titre']}]({a['lien']})")
+
+    # Actions
+    b1, b2 = st.columns(2)
+    if b1.button("⭐ Ajouter à la watchlist"):
+        if tk not in st.session_state.watchlist:
+            st.session_state.watchlist.append(tk)
+        st.success("Ajouté.")
+    if b2.button("📓 Acheter en mode papier (montant max)"):
+        st.session_state.papier.append({"ticker": tk, "prix": float(serie.iloc[-1]),
+                                        "montant": plan["montant_max"]})
+        st.success("Position fictive ouverte.")
+
+    # Analyste IA optionnel
+    if "ANTHROPIC_API_KEY" in st.secrets:
+        if st.button("🤖 Demander un avis à l'analyste IA"):
+            try:
+                import anthropic
+                client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+                actus = "\n".join(a["titre"] for a in charger_actus(tk))
+                prompt = (f"Analyse {ligne['Nom']} ({tk}). Momentum {ligne['Momentum']}, "
+                          f"fondamentaux {ligne['Fondamentaux']}, risque {ligne['Risque']}, "
+                          f"perf 6m {ligne['Perf 6m %']}%. Actualités :\n{actus}\n"
+                          "Donne en français une analyse équilibrée (points forts, risques, "
+                          "contexte mondial) en 150 mots, sans conseil d'achat.")
+                rep = client.messages.create(model="claude-sonnet-4-5", max_tokens=500,
+                                             messages=[{"role": "user", "content": prompt}])
+                st.info(rep.content[0].text)
+            except Exception as e:
+                st.error(f"Analyste IA indisponible : {e}")
+
+# ---------- Onglet 4 : Comparateur ----------
+with onglets[3]:
+    st.subheader("⚖️ Comparer des entreprises")
+    sel = st.multiselect("Choisissez 2 à 4 entreprises", list(df["Ticker"]), max_selections=4)
+    if len(sel) >= 2:
+        fig = go.Figure()
+        for s in sel:
+            sr = prix[s].dropna()
+            fig.add_trace(go.Scatter(x=sr.index, y=sr / sr.iloc[0] * 100, name=s))
+        fig.update_layout(title="Performance comparée (base 100)", height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(df[df["Ticker"].isin(sel)][["Ticker", "Nom", "Perf 6m %", "Momentum",
+                                                  "Fondamentaux", "Risque", "Volatilité %", "Profil"]],
                      use_container_width=True, hide_index=True)
     else:
-        st.warning("Impossible de charger les données pour le moment. Réessayez dans un instant.")
+        st.info("Sélectionnez au moins 2 entreprises.")
 
-    st.markdown("### Détail d'une thématique")
-    choix = st.selectbox("Choisissez une thématique", list(TENDANCES.keys()))
-    st.info(f"**Pourquoi elle est portée par le monde actuel :** {TENDANCES[choix]['pourquoi']}")
-    st.warning(f"**Risques :** {TENDANCES[choix]['risques']}")
+# ---------- Onglet 5 : Tendances ----------
+with onglets[4]:
+    st.subheader("🌍 Les grandes tendances")
+    for nom, t in TENDANCES.items():
+        sous = df[df["Tendance"] == nom]
+        with st.expander(f"{nom} ({len(sous)} entreprises)"):
+            st.markdown(f"**Pourquoi ça porte :** {t['pourquoi']}")
+            st.markdown(f"**Risques :** {t['risques']}")
+            if not sous.empty:
+                st.dataframe(sous.sort_values("Momentum", ascending=False)[
+                    ["Ticker", "Nom", "Perf 6m %", "Momentum", "Fondamentaux", "Risque", "Profil"]],
+                    use_container_width=True, hide_index=True)
 
-    df_t, _ = analyser_theme(choix)
-    if not df_t.empty:
-        st.dataframe(
-            df_t.sort_values("Momentum", ascending=False).style.format(
-                {"Perf 6m": "{:+.0%}", "Perf 1a": "{:+.0%}"}),
-            use_container_width=True, hide_index=True)
-        st.caption("Momentum = le cours monte-t-il ? • Fondamentaux = l'entreprise gagne-t-elle vraiment de l'argent ? "
-                   "• Tendance = le secteur la porte-t-il ? • Risque = plus c'est haut, plus c'est dangereux.")
-
-# ---------------------------------------------------------------- ONGLET 2
-with onglets[1]:
-    st.subheader("Analyse détaillée d'une entreprise")
-    c1, c2 = st.columns(2)
-    theme_sel = c1.selectbox("Thématique", list(TENDANCES.keys()), key="th_det")
-    ticker_sel = c2.selectbox("Entreprise", TENDANCES[theme_sel]["actions"])
-
-    df_t, details = analyser_theme(theme_sel)
-    if ticker_sel in details:
-        d = details[ticker_sel]
-        i, f, serie = d["i"], d["f"], d["serie"]
-        ligne = df_t[df_t["Ticker"] == ticker_sel].iloc[0]
-
-        st.markdown(f"## {ligne['Nom']} ({ticker_sel}) — {ligne['Profil']}")
-        m = st.columns(4)
-        m[0].metric("Momentum", f"{ligne['Momentum']}/100")
-        m[1].metric("Fondamentaux", f"{ligne['Fondamentaux']}/100")
-        m[2].metric("Tendance", f"{ligne['Tendance']}/100")
-        m[3].metric("Risque", f"{ligne['Risque']}/100")
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=serie.index, y=serie, name="Cours"))
-        fig.add_trace(go.Scatter(x=serie.index, y=serie.rolling(50).mean(), name="Moyenne 50j"))
-        fig.add_trace(go.Scatter(x=serie.index, y=serie.rolling(200).mean(), name="Moyenne 200j"))
-        fig.update_layout(height=400, margin=dict(l=0, r=0, t=20, b=0))
-        st.plotly_chart(fig, use_container_width=True)
-
-        pq, vg, co = explications(theme_sel, i, f)
-        a, b, cc = st.columns(3)
-        with a:
-            st.markdown("#### ✅ Pourquoi ça marche")
-            for x in pq:
-                st.write("• " + x)
-        with b:
-            st.markdown("#### ⚠️ Points de vigilance")
-            for x in vg:
-                st.write("• " + x)
-        with cc:
-            st.markdown("#### 🔗 Corrélations")
-            for x in co:
-                st.write("• " + x)
-
-        st.markdown("#### 📰 Actualité récente")
-        for n in actualites(f"{ligne['Nom']} bourse"):
-            tags = " ".join(n["tags"])
-            st.markdown(f"- [{n['titre']}]({n['lien']})  \n  <small>{n['date']} {tags}</small>",
-                        unsafe_allow_html=True)
-
-        # --- Analyste IA optionnel (clé à mettre dans les Secrets Streamlit)
-        if "ANTHROPIC_API_KEY" in st.secrets:
-            if st.button("🤖 Générer une thèse d'investissement par IA"):
-                try:
-                    import anthropic
-                    client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-                    prompt = (
-                        f"Entreprise : {ligne['Nom']} ({ticker_sel}). Thématique : {theme_sel}.\n"
-                        f"Données : perf 6m {pct(i['perf_6m'])}, perf 1 an {pct(i['perf_1a'])}, "
-                        f"RSI {i['rsi']:.0f}, volatilité {i['volatilite']:.0%}, "
-                        f"croissance CA {f.get('revenueGrowth')}, marge nette {f.get('profitMargins')}.\n"
-                        f"Actualités : {[n['titre'] for n in actualites(ligne['Nom'] + ' bourse', 5)]}\n"
-                        "Rédige en français une thèse d'investissement courte : pourquoi l'entreprise "
-                        "progresse, lien avec les tendances mondiales, risques, et ce qu'il faudrait "
-                        "surveiller. Reste factuel, sans promettre de gains."
-                    )
-                    rep = client.messages.create(
-                        model="claude-sonnet-4-5", max_tokens=900,
-                        messages=[{"role": "user", "content": prompt}])
-                    st.markdown(rep.content[0].text)
-                except Exception as e:
-                    st.error(f"Erreur IA : {e}")
+# ---------- Onglet 6 : Watchlist ----------
+with onglets[5]:
+    st.subheader("⭐ Ma watchlist")
+    st.caption("La watchlist est conservée tant que la page reste ouverte.")
+    if not st.session_state.watchlist:
+        st.info("Vide. Ajoutez des entreprises depuis l'onglet « Fiche & plan ».")
     else:
-        st.warning("Données indisponibles pour cette entreprise.")
+        w = df[df["Ticker"].isin(st.session_state.watchlist)]
+        st.dataframe(w[["Ticker", "Nom", "Perf 1m %", "Perf 6m %", "Momentum", "Risque", "Profil"]],
+                     use_container_width=True, hide_index=True)
+        if st.button("🗑️ Vider la watchlist"):
+            st.session_state.watchlist = []
+            st.rerun()
 
-# ---------------------------------------------------------------- ONGLET 3
-with onglets[2]:
-    st.subheader("💼 Mon portefeuille")
-    st.caption("Vos données restent dans votre session et ne sont pas enregistrées sur le site.")
+# ---------- Onglet 7 : Backtest ----------
+with onglets[6]:
+    st.subheader("🧪 Backtest simplifié")
+    st.write("Test : si on avait acheté, il y a 6 mois, les entreprises qui avaient alors le meilleur élan "
+             "(mesuré sur les 6 mois précédents), auraient-elles battu le marché ?")
+    pr = charger_prix(tuple(df["Ticker"].tolist() + [ETF_MARCHE]), "2y")
+    if pr.shape[0] > 280:
+        coupe = pr.shape[0] - 126
+        avant = pr.iloc[:coupe]
+        apres = pr.iloc[coupe - 1:]
+        mom_avant = {}
+        for c in avant.columns:
+            s = avant[c].dropna()
+            if len(s) > 130 and c != ETF_MARCHE:
+                mom_avant[c] = perf(s, 126)
+        classement = pd.Series(mom_avant).sort_values(ascending=False)
+        n_top = max(5, len(classement) // 5)
+        top = classement.head(n_top).index
+        reste = classement.tail(len(classement) - n_top).index
 
-    mode = st.radio("Comment ajouter vos positions ?",
-                    ["✍️ Saisie manuelle", "📁 Importer un fichier CSV"], horizontal=True)
+        def rend(cols):
+            vals = [(apres[c].dropna().iloc[-1] / apres[c].dropna().iloc[0] - 1) * 100
+                    for c in cols if apres[c].dropna().shape[0] > 10]
+            return np.mean(vals) if vals else np.nan
 
-    if mode.startswith("📁"):
-        st.write("Le fichier doit avoir 3 colonnes : `ticker`, `quantite`, `prix_achat`.")
-        fichier = st.file_uploader("Fichier CSV", type="csv")
-        if fichier is not None:
-            try:
-                df_p = pd.read_csv(fichier)
-                df_p.columns = [c.strip().lower() for c in df_p.columns]
-                st.session_state["portefeuille"] = df_p[["ticker", "quantite", "prix_achat"]]
-            except Exception:
-                st.error("Fichier invalide. Vérifiez les noms de colonnes.")
+        r_top, r_reste = rend(top), rend(reste)
+        r_marche = (apres[ETF_MARCHE].iloc[-1] / apres[ETF_MARCHE].iloc[0] - 1) * 100
+        m1, m2, m3 = st.columns(3)
+        m1.metric(f"Top {n_top} élan (il y a 6 mois)", f"{r_top:+.1f} %")
+        m2.metric("Les autres", f"{r_reste:+.1f} %")
+        m3.metric("Marché (S&P 500)", f"{r_marche:+.1f} %")
+        if r_top > r_marche:
+            st.success("Sur cette période, les titres à fort élan ont battu le marché. Cela ne garantit rien pour l'avenir.")
+        else:
+            st.warning("Sur cette période, les titres à fort élan n'ont PAS battu le marché. Preuve que le momentum seul ne suffit pas.")
+        st.caption("Backtest très simplifié : une seule période, pas de frais, biais possible (liste actuelle d'entreprises). À prendre comme un indice, pas une preuve.")
     else:
-        base = st.session_state.get("portefeuille", pd.DataFrame(
-            {"ticker": ["NVDA"], "quantite": [1.0], "prix_achat": [100.0]}))
-        st.session_state["portefeuille"] = st.data_editor(
-            base, num_rows="dynamic", use_container_width=True)
+        st.info("Pas assez d'historique pour le backtest.")
 
-    pf = st.session_state.get("portefeuille")
-    if pf is not None and not pf.dropna().empty:
-        pf = pf.dropna()
-        tickers = tuple(str(t).upper().strip() for t in pf["ticker"])
-        try:
-            cl, _ = charger_prix(tickers)
-            dernier = cl.iloc[-1]
-            pf = pf.assign(ticker=list(tickers))
-            pf["Prix actuel"] = pf["ticker"].map(dernier)
-            pf["Valeur"] = pf["quantite"] * pf["Prix actuel"]
-            pf["Gain/Perte"] = pf["Valeur"] - pf["quantite"] * pf["prix_achat"]
-            pf["Perf %"] = pf["Prix actuel"] / pf["prix_achat"] - 1
+# ---------- Onglet 8 : Mode papier ----------
+with onglets[7]:
+    st.subheader("📓 Portefeuille fictif (mode papier)")
+    st.write("Testez vos idées avec de l'argent virtuel avant de risquer du vrai argent.")
+    if not st.session_state.papier:
+        st.info("Aucune position. Ouvrez-en depuis l'onglet « Fiche & plan ».")
+    else:
+        rows, total_in, total_now = [], 0, 0
+        pp = charger_prix(tuple({p["ticker"] for p in st.session_state.papier}), "5d")
+        for p in st.session_state.papier:
+            if p["ticker"] in pp.columns:
+                actuel = float(pp[p["ticker"]].dropna().iloc[-1])
+                val = p["montant"] * actuel / p["prix"]
+                rows.append({"Ticker": p["ticker"], "Mis (€)": p["montant"],
+                             "Valeur (€)": round(val, 2),
+                             "Variation %": round((val / p["montant"] - 1) * 100, 1)})
+                total_in += p["montant"]
+                total_now += val
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        if total_in:
+            st.metric("Total", f"{total_now:.0f} €", f"{(total_now / total_in - 1) * 100:+.1f} %")
+        if st.button("🗑️ Réinitialiser le mode papier"):
+            st.session_state.papier = []
+            st.rerun()
 
-            total = pf["Valeur"].sum()
-            gain = pf["Gain/Perte"].sum()
-            k = st.columns(2)
-            k[0].metric("Valeur totale", f"{total:,.0f}")
-            k[1].metric("Gain / perte total", f"{gain:+,.0f}")
-            st.dataframe(pf.style.format({"Prix actuel": "{:.2f}", "Valeur": "{:,.0f}",
-                                          "Gain/Perte": "{:+,.0f}", "Perf %": "{:+.1%}"}),
-                         use_container_width=True, hide_index=True)
+# ---------- Onglet 9 : Portefeuille réel (CSV) + corrélations ----------
+with onglets[8]:
+    st.subheader("💼 Mon portefeuille réel")
+    st.write("Importez un fichier CSV avec les colonnes : `ticker, quantite, prix_achat`.")
+    fichier = st.file_uploader("Fichier CSV", type="csv")
+    if fichier:
+        pf = pd.read_csv(fichier)
+        pf.columns = [c.strip().lower() for c in pf.columns]
+        if {"ticker", "quantite", "prix_achat"}.issubset(pf.columns):
+            tks = tuple(pf["ticker"].str.upper().tolist())
+            pxs = charger_prix(tks, "1y")
+            lignes, total = [], 0
+            for _, r in pf.iterrows():
+                t = str(r["ticker"]).upper()
+                if t in pxs.columns:
+                    actuel = float(pxs[t].dropna().iloc[-1])
+                    val = actuel * r["quantite"]
+                    total += val
+                    lignes.append({"Ticker": t, "Quantité": r["quantite"],
+                                   "Prix achat": r["prix_achat"], "Prix actuel": round(actuel, 2),
+                                   "Valeur": round(val, 2),
+                                   "Gain %": round((actuel / r["prix_achat"] - 1) * 100, 1)})
+            dfp = pd.DataFrame(lignes)
+            dfp["Poids %"] = (dfp["Valeur"] / total * 100).round(1)
+            st.dataframe(dfp, use_container_width=True, hide_index=True)
+            st.metric("Valeur totale", f"{total:,.0f}")
+            fig = px.pie(dfp, names="Ticker", values="Valeur", title="Répartition")
+            st.plotly_chart(fig, use_container_width=True)
+            if (dfp["Poids %"] > 25).any():
+                st.warning("⚠️ Une position dépasse 25 % du portefeuille : forte concentration.")
+            if len(tks) >= 3:
+                corr = pxs.pct_change().dropna().corr()
+                fig2 = px.imshow(corr, text_auto=".2f", color_continuous_scale="RdBu_r",
+                                 zmin=-1, zmax=1, title="Corrélations (proche de 1 = bougent ensemble)")
+                st.plotly_chart(fig2, use_container_width=True)
+                st.caption("Des valeurs proches de 1 signifient que vos actions réagissent de la même façon : peu de diversification.")
+        else:
+            st.error("Le CSV doit contenir : ticker, quantite, prix_achat.")
+# ---------- Onglet 10 : Aide ----------
+with onglets[9]:
+    st.subheader("❓ Aide")
+    st.markdown("""
+**Momentum** : le cours monte-t-il plus vite que le marché ?
 
-            # répartition par tendance
-            inverse = {t: nom for nom, th in TENDANCES.items() for t in th["actions"]}
-            pf["Tendance"] = pf["ticker"].map(inverse).fillna("Autre")
-            rep = pf.groupby("Tendance")["Valeur"].sum().reset_index()
-            st.plotly_chart(px.pie(rep, names="Tendance", values="Valeur",
-                                   title="Répartition par tendance"),
-                            use_container_width=True)
+**Fondamentaux** : croissance, marges, rentabilité, endettement.
 
-            # alertes
-            st.markdown("#### 🚨 Alertes")
-            ok = True
-            for _, r_ in rep.iterrows():
-                if total > 0 and r_["Valeur"] / total > 0.5:
-                    st.warning(f"Plus de 50 % de votre portefeuille est concentré sur « {r_['Tendance']} ». "
-                               "Pensez à diversifier.")
-                    ok = False
-            for _, r_ in pf.iterrows():
-                if total > 0 and r_["Valeur"] / total > 0.25:
-                    st.warning(f"{r_['ticker']} pèse plus de 25 % de votre portefeuille.")
-                    ok = False
-            if ok:
-                st.success("Pas de concentration excessive détectée.")
+**Risque** : plus le chiffre est haut, plus l'investissement est dangereux.
 
-            # idées à étudier
-            st.markdown("#### 💡 Idées à étudier (hors portefeuille)")
-            possedes = set(tickers)
-            idees = []
-            for nom in TENDANCES:
-                dft, _ = analyser_theme(nom)
-                if dft.empty:
-                    continue
-                dft = dft[(~dft["Ticker"].isin(possedes)) &
-                          (dft["Profil"] == "🚀 Croissance solide")]
-                for _, r_ in dft.iterrows():
-                    idees.append({"Tendance": nom, **r_.to_dict()})
-            if idees:
-                df_i = pd.DataFrame(idees).sort_values("Momentum", ascending=False).head(8)
-                st.dataframe(df_i[["Ticker", "Nom", "Tendance", "Profil", "Momentum",
-                                   "Fondamentaux", "Risque", "Perf 6m"]].style.format(
-                    {"Perf 6m": "{:+.0%}"}), use_container_width=True, hide_index=True)
-                st.caption("Ce sont des pistes à étudier, pas des recommandations d'achat.")
-            else:
-                st.info("Aucune idée « Croissance solide » en dehors de votre portefeuille pour l'instant.")
-        except Exception as e:
-            st.error(f"Impossible de calculer le portefeuille : {e}")
+**Les profils**
+- 🚀 Croissance solide : le cours monte ET l'entreprise est saine.
+- 🎲 Spéculatif : le cours monte mais les fondamentaux sont fragiles.
+- 💎 Solide mais délaissée : bonne entreprise dont le cours est en retard.
+- ⚖️ À surveiller : signaux mélangés.
 
-# ---------------------------------------------------------------- ONGLET 4
-with onglets[3]:
-        st.markdown("""
-### Comment lire les scores
-- **Momentum** : le cours monte-t-il plus vite que le marché ?
-- **Fondamentaux** : croissance, marges, rentabilité, endettement.
-- **Tendance** : le secteur entier est-il porteur ?
-- **Risque** : plus le chiffre est haut, plus l'investissement est dangereux.
+**Petites entreprises** : elles peuvent monter très vite mais aussi perdre
+la quasi-totalité de leur valeur. Gardez des montants faibles.
 
-### Les profils
-- 🚀 **Croissance solide** : le cours monte ET l'entreprise est saine.
-- 🎲 **Spéculatif** : le cours monte mais les fondamentaux sont fragiles.
-- 💎 **Solide mais délaissée** : bonne entreprise, cours en retard.
-- ⚖️ **À surveiller** : signaux mélangés.
+**Importer un CSV** : colonnes ticker, quantite, prix_achat.
+Pour l'Europe, ajoutez le suffixe de la bourse (.PA, .DE, .AS).
 
-### Importer un CSV
-Colonnes : ticker, quantite, prix_achat. Pour les actions européennes, ajoutez le suffixe de la bourse (.PA Paris, .DE Allemagne, .AS Amsterdam).
+**Plan d'investissement** : les montants, durées et stop-loss affichés sont
+des repères pédagogiques calculés à partir de la volatilité passée.
+Ils ne constituent pas un conseil personnalisé.
 
-⚠️ Outil pédagogique : ne constitue pas un conseil en investissement.
+**Analyste IA (optionnel)** : ajoutez ANTHROPIC_API_KEY dans les Secrets
+de Streamlit pour l'activer.
 """)
+    st.warning("⚠️ Outil pédagogique : ne constitue pas un conseil en investissement. Le passé ne garantit pas l'avenir. N'investissez que de l'argent que vous pouvez vous permettre de perdre.")
+
+
