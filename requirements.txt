@@ -3,8 +3,5 @@ yfinance
 pandas
 numpy
 plotly
-requests
 feedparser
-lxml
-matplotlib
 anthropic
